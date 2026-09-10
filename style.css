@@ -1,0 +1,872 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* LIGHT LUXURY PALETTE */
+  --bg-color: #faf7f5;
+  --bg-gradient: radial-gradient(at 0% 0%, rgba(243, 235, 230, 0.8) 0px, transparent 50%),
+                 radial-gradient(at 100% 100%, rgba(238, 226, 222, 0.6) 0px, transparent 50%);
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --text-color: #2c2523;
+  --text-muted: #7d7571;
+  --accent-color: #8c6d58; /* Elegant Rose Gold / Warm Beige Accent */
+  --accent-hover: #6e5443;
+  --border-color: rgba(140, 109, 88, 0.15);
+  --input-bg: #ffffff;
+  --shadow-sm: 0 4px 20px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 10px 30px rgba(140, 109, 88, 0.08);
+}
+
+body.dark-theme, body.dark {
+  /* DARK LUXURY PALETTE */
+  --bg-color: #141211;
+  --bg-gradient: radial-gradient(at 0% 0%, rgba(38, 32, 29, 0.6) 0px, transparent 50%),
+                 radial-gradient(at 100% 100%, rgba(25, 21, 19, 0.8) 0px, transparent 50%);
+  --card-bg: rgba(26, 23, 22, 0.92);
+  --text-color: #f3efe9;
+  --text-muted: #a39b94;
+  --accent-color: #d4b29d;
+  --accent-hover: #b8937e;
+  --border-color: rgba(212, 178, 157, 0.15);
+  --input-bg: #211e1c;
+  --shadow-sm: 0 4px 20px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+* { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+  font-family: 'Montserrat', sans-serif; 
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+body {
+  background-color: var(--bg-color);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--text-color);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 70px; /* Mobile bottom nav uchun joy */
+}
+
+.hidden { display: none !important; }
+
+/* HEADER */
+.top-header {
+  display: flex; 
+  align-items: center; 
+  justify-content: space-between;
+  padding: 16px 50px; 
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border-color); 
+  position: sticky; 
+  top: 0; 
+  z-index: 100;
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+}
+
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand-logo { 
+  width: 52px; 
+  height: 52px; 
+  border-radius: 50%; 
+  object-fit: cover; 
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.brand-title { 
+  font-family: 'Cormorant Garamond', serif; 
+  font-size: 34px; 
+  font-weight: 600;
+  color: var(--accent-color); 
+  letter-spacing: 1px;
+  line-height: 0.9; 
+}
+
+.brand-subtitle { 
+  font-size: 10px; 
+  letter-spacing: 4px; 
+  text-transform: uppercase; 
+  color: var(--text-muted); 
+  font-weight: 500;
+}
+
+.search-box { 
+  flex: 0 1 380px; 
+  border: 1px solid var(--border-color); 
+  border-radius: 30px; 
+  overflow: hidden; 
+  background: var(--input-bg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+}
+
+#searchInput { 
+  width: 100%;
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 13px;
+}
+
+#searchInput::placeholder { 
+  color: var(--text-muted); 
+  opacity: 0.7; 
+}
+
+.header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.pill-btn {
+  position: relative; 
+  display: inline-flex; 
+  align-items: center; 
+  justify-content: center;
+  background: transparent; 
+  border: 1px solid var(--border-color); 
+  font-weight: 500;
+  padding: 9px 22px; 
+  border-radius: 30px; 
+  font-size: 12px; 
+  letter-spacing: 0.5px;
+  color: var(--text-color);
+  cursor: pointer; 
+}
+
+.pill-btn:hover { 
+  background: var(--accent-color); 
+  color: #ffffff; 
+  border-color: var(--accent-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.badge {
+  background: var(--accent-color); 
+  color: #ffffff;
+  font-size: 10px; 
+  font-weight: 600; 
+  min-width: 18px; 
+  height: 18px; 
+  padding: 0 4px;
+  border-radius: 50px; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
+  border: 2px solid var(--card-bg);
+}
+
+.pill-btn .badge {
+  position: absolute; 
+  top: -4px; 
+  right: -4px; 
+}
+
+/* MAIN */
+.main-container { max-width: 1280px; margin: 20px auto; padding: 0 16px; }
+.categories-section { margin-bottom: 20px; }
+
+.categories-list { 
+  display: flex;
+  flex-wrap: nowrap;          
+  overflow-x: auto;           
+  white-space: nowrap;        
+  gap: 10px;                  
+  padding: 10px 0;
+  width: 100%;
+  margin: 0 auto;
+  -webkit-overflow-scrolling: touch; 
+  scrollbar-width: none; 
+}
+
+.categories-list::-webkit-scrollbar {
+  display: none;
+}  
+
+.cat-btn { 
+  background: transparent; 
+  border: 1px solid var(--border-color); 
+  color: var(--text-muted); 
+  font-weight: 500; 
+  padding: 8px 20px; 
+  border-radius: 30px; 
+  font-size: 13px;
+  cursor: pointer; 
+  flex-shrink: 0;
+}
+
+.cat-btn.active, .cat-btn:hover { 
+  background: var(--accent-color); 
+  color: #ffffff; 
+  border-color: var(--accent-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-layout-wrapper { display: flex; gap: 30px; align-items: flex-start; }
+.stock-dashboard:not(.hidden) { flex: 0 0 280px; }
+
+.stock-card { 
+  background: var(--card-bg); 
+  border: 1px solid var(--border-color); 
+  border-radius: 20px; 
+  padding: 24px; 
+  margin-bottom: 16px; 
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(10px);
+}
+
+.stock-info-header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  margin-bottom: 20px; 
+  border-bottom: 1px solid var(--border-color); 
+  padding-bottom: 12px; 
+}
+
+.stock-info-header h2 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+}
+
+.stock-status-badge { 
+  background: rgba(34, 197, 94, 0.15); 
+  color: #22c55e; 
+  font-size: 10px; 
+  font-weight: 600;
+  padding: 4px 10px; 
+  border-radius: 20px; 
+}
+
+.metric-box { 
+  background: var(--input-bg); 
+  border: 1px solid var(--border-color);
+  border-radius: 12px; 
+  padding: 14px; 
+  margin-bottom: 12px; 
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: block; }
+.metric-value { font-size: 26px; font-weight: 600; color: var(--accent-color); display: block; line-height: 1.2; }
+
+/* PROFIL: tahrirlash tugmasi va avatar */
+.profile-edit-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 15px;
+}
+
+.icon-edit-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.icon-edit-btn:hover, .icon-edit-btn.active {
+  background: var(--accent-color);
+  color: #ffffff;
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 18px auto;
+}
+
+.profile-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  overflow: hidden;
+}
+
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.avatar-add-btn {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border: 2px solid var(--card-bg);
+}
+
+.hidden-file-input { display: none; }
+
+.avatar-remove-btn {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e11d48;
+  color: #ffffff;
+  border: 2px solid var(--card-bg);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* BUYURTMALAR RO'YXATI: qatorlar orasiga joy, harflarni yumshatish */
+#myOrdersList, #receiptsList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#myOrdersList .stock-card, #receiptsList .stock-card {
+  margin-bottom: 0;
+}
+
+.stock-card strong { font-weight: 600; }
+.stock-card .card-info { line-height: 1.6; }
+
+.order-items-toggle-btn {
+  margin-top: 10px;
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--accent-color);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.order-items-list {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.order-item-row img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+/* PRODUCTS GRID (Desktop) */
+.products-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+  gap: 16px; 
+  flex-grow: 1; 
+}
+
+.product-card { 
+  background: var(--card-bg); 
+  border: 1px solid var(--border-color); 
+  border-radius: 16px; 
+  overflow: hidden; 
+  position: relative; 
+  display: flex; 
+  flex-direction: column; 
+  box-shadow: var(--shadow-sm);
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.card-img-container { height: 240px; position: relative; cursor: pointer; overflow: hidden; }
+.card-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease; }
+.product-card:hover .card-img { transform: scale(1.04); }
+
+.card-content { padding: 12px; display: flex; flex-direction: column; gap: 6px; flex-grow: 1; }
+.card-cat { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+.card-title { font-size: 13px; font-weight: 500; letter-spacing: 0.3px; line-height: 1.3; }
+.card-price { font-size: 14px; font-weight: 600; color: var(--accent-color); margin-top: auto; padding-top: 4px; }
+
+/* INPUTS & BUTTONS */
+.btn-primary { 
+  width: 100%; 
+  background: var(--accent-color); 
+  color: #ffffff; 
+  border: none; 
+  padding: 10px; 
+  border-radius: 20px; 
+  font-size: 12px;
+  font-weight: 500; 
+  letter-spacing: 0.5px;
+  cursor: pointer; 
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover { background: var(--accent-hover); }
+
+.btn-secondary-small { 
+  background: transparent; 
+  color: var(--accent-color); 
+  border: 1px solid var(--accent-color); 
+  padding: 6px 14px; 
+  border-radius: 20px; 
+  font-size: 11px;
+  cursor: pointer; 
+}
+
+.btn-secondary-small:hover { background: var(--accent-color); color: #fff; }
+
+.edit-btn, .delete-btn {
+  position: absolute;
+  top: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  padding: 6px;
+  box-shadow: var(--shadow-sm);
+}
+
+.edit-btn { left: 10px; }
+.delete-btn { right: 10px; }
+.edit-icon, .delete-icon { width: 100%; height: 100%; object-fit: contain; }
+
+.delete-btnn { background: none; border: none; cursor: pointer; opacity: 0.6; }
+.delete-btnn:hover { opacity: 1; }
+
+.qty-btn {
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.form-group { margin-bottom: 18px; display: flex; flex-direction: column; gap: 6px; }
+.form-group label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; 
+  padding: 12px 16px; 
+  border: 1px solid var(--border-color); 
+  border-radius: 12px;
+  background-color: var(--input-bg); 
+  color: var(--text-color); 
+  outline: none;
+  font-size: 13px;
+}
+
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  border-color: var(--accent-color);
+}
+
+/* MODALS */
+.modal-overlay { 
+  position: fixed; 
+  inset: 0; 
+  background: rgba(15, 13, 11, 0.6); 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  z-index: 1000; 
+  backdrop-filter: blur(8px); 
+}
+
+.modal-card { 
+  background: var(--card-bg); 
+  color: var(--text-color); 
+  width: 90%; 
+  max-width: 500px; 
+  border-radius: 24px; 
+  padding: 32px; 
+  position: relative; 
+  max-height: 85vh; 
+  overflow-y: auto; 
+  border: 1px solid var(--border-color); 
+  box-shadow: var(--shadow-md);
+}
+
+.modal-card-large { max-width: 760px; }
+.close-modal { 
+  position: absolute; 
+  top: 20px; 
+  right: 20px; 
+  background: none; 
+  border: none; 
+  font-size: 22px; 
+  color: var(--text-muted); 
+  cursor: pointer; 
+}
+.close-modal:hover { color: var(--text-color); }
+
+.modal-heading { 
+  font-family: 'Cormorant Garamond', serif; 
+  font-size: 26px; 
+  font-weight: 600; 
+  margin-bottom: 20px; 
+}
+
+/* CATEGORY & COLOR PICKER */
+.cat-row { display: flex !important; align-items: center !important; gap: 8px !important; }
+.add-cat-btn {
+  width: 44px !important; 
+  height: 44px !important; 
+  background: var(--accent-color) !important; 
+  color: #ffffff !important; 
+  border: none !important;
+  border-radius: 12px !important; 
+  font-size: 18px !important; 
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#colorPickerGrid, #editColorPickerGrid {
+  display: grid !important; 
+  grid-template-columns: 1fr 1fr !important; 
+  gap: 2px 18px !important;
+  max-height: 200px !important; 
+  overflow-y: auto !important; 
+  overflow-x: hidden !important;
+  padding: 12px !important;
+  border: 1px solid var(--border-color) !important; 
+  border-radius: 12px !important; 
+  background: var(--input-bg) !important;
+}
+
+.color-item { 
+  display: grid !important; 
+  grid-template-columns: 1fr 20px !important;
+  align-items: center !important; 
+  gap: 8px !important; 
+  font-size: 12px !important; 
+  padding: 8px 6px !important;
+  border-radius: 8px !important;
+  min-width: 0 !important;
+}
+
+.color-item:hover { background: var(--card-bg) !important; }
+
+.color-item span { 
+  order: 1; 
+  min-width: 0; 
+  white-space: normal; 
+  word-break: break-word;
+}
+
+.color-item input { 
+  order: 2; 
+  justify-self: end;
+  flex-shrink: 0; 
+  margin: 0 !important;
+  width: 16px;
+  height: 16px;
+}
+
+/* MODAL PRODUCT DETAIL */
+.modal-product-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.modal-img { width: 100%; height: 320px; object-fit: cover; border-radius: 16px; }
+.modal-thumbnails { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.thumb-img { width: 48px; height: 48px; object-fit: cover; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
+.thumb-img.active { border-color: var(--accent-color); }
+
+.size-btn { 
+  padding: 8px 16px; 
+  border: 1px solid var(--border-color); 
+  border-radius: 20px; 
+  background: var(--input-bg); 
+  color: var(--text-color); 
+  font-size: 12px;
+  cursor: pointer; 
+}
+
+.size-btn.selected { background: var(--accent-color); color: #fff; border-color: var(--accent-color); }
+
+.cart-item-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-color); gap: 12px; }
+.cart-item-img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; }
+
+.card-pay-info { 
+  background: linear-gradient(135deg, var(--accent-color), var(--accent-hover)); 
+  color: #ffffff; 
+  padding: 20px; 
+  border-radius: 18px; 
+  box-shadow: var(--shadow-sm);
+}
+
+.card-box { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+.copy-btn { 
+  background: rgba(255, 255, 255, 0.2); 
+  border: 1px solid rgba(255, 255, 255, 0.4); 
+  color: #ffffff; 
+  padding: 6px 14px; 
+  border-radius: 20px; 
+  font-size: 11px;
+  cursor: pointer; 
+}
+
+/* ADMIN STATUS BUTTONS */
+.order-status-actions { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; margin-top: 14px !important; }
+
+.status-btn-compact {
+  flex: 1 !important;
+  padding: 8px 14px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border-radius: 30px !important;
+  border: 1px solid transparent !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+}
+
+.status-kutilmoqda, .status-bts {
+  background: rgba(140, 109, 88, 0.12) !important;
+  color: var(--accent-color) !important;
+  border-color: rgba(140, 109, 88, 0.25) !important;
+}
+
+.status-kutilmoqda:hover, .status-bts:hover {
+  background: var(--accent-color) !important;
+  color: #ffffff !important;
+}
+
+.status-bekor {
+  background: rgba(225, 29, 72, 0.1) !important;
+  color: #e11d48 !important;
+  border-color: rgba(225, 29, 72, 0.2) !important;
+}
+
+.status-bekor:hover {
+  background: #e11d48 !important;
+  color: #ffffff !important;
+}
+
+.status-badge { padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.badge-kutilmoqda, .badge-bts { background: rgba(140, 109, 88, 0.12); color: var(--accent-color); }
+.badge-bekor { background: rgba(225, 29, 72, 0.1); color: #e11d48; }
+
+/* UZUM MARKET USLUBIDAGI BOTTOM NAV BAR (PUL'T) */
+.bottom-nav {
+  display: none; /* Desktopda ko'rinmaydi */
+}
+
+/* MOBILE RESPONSIVE (UZUM MARKET KO'RINISHI) */
+@media (max-width: 768px) {
+  body {
+    padding-bottom: 75px; /* Pastki fixed menyu kontentni to'sib qo'ymasligi uchun */
+  }
+
+  .top-header { 
+    padding: 10px 12px; 
+    flex-wrap: nowrap; 
+    gap: 8px;
+  }
+  
+  .brand { flex-shrink: 0; gap: 8px; }
+  .brand-logo { width: 36px; height: 36px; }
+  .brand-title { font-size: 18px; line-height: 1; }
+  .brand-subtitle { font-size: 7px; letter-spacing: 2px; }
+  
+  .search-box { 
+    flex: 1 1 auto; 
+    min-width: 0;
+  }
+
+  #searchInput {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  /* Barcha header tugmalari (Savat, Buyurtmalarim, Admin, +Mahsulot, Cheklar,
+     Chiqish, Dark Mode) mobilda pastki navigatsiya va Profil oynasiga
+     ko'chiriladi — headerda faqat Logo + Nom + Qidiruv qoladi. */
+  .header-actions {
+    display: none;
+  }
+
+  /* 1 QATORDA 2 TA MAHSULOT */
+  .products-grid { 
+    grid-template-columns: repeat(2, 1fr) !important; 
+    gap: 10px !important; 
+  }
+
+  .card-img-container { 
+    height: 170px !important; 
+  }
+
+  .card-content { 
+    padding: 10px !important; 
+  }
+
+  .modal-product-layout { grid-template-columns: 1fr; }
+  .order-status-actions { flex-direction: column !important; }
+
+  /* PASTKI FINISHED MENYU (BOTTOM NAV) */
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: var(--card-bg);
+    border-top: 1px solid var(--border-color);
+    backdrop-filter: blur(12px);
+    justify-content: space-around;
+    align-items: center;
+    z-index: 1000;
+    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.05);
+  }
+
+  .bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-decoration: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    gap: 4px;
+    flex: 1;
+    height: 100%;
+  }
+
+  .bottom-nav-item.active, 
+  .bottom-nav-item:active,
+  .bottom-nav-item:hover {
+    color: var(--accent-color);
+  }
+
+  .bottom-nav-item {
+    position: relative;
+  }
+
+  .bottom-nav-item .nav-badge {
+    position: absolute;
+    top: 2px;
+    right: calc(50% - 22px);
+    font-size: 9px;
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    padding: 0 4px;
+  }
+} 
+
+/* Savatdagi o'chirish tugmasi ikonkasi */
+.delete-btnn img, 
+.cart-item-row .delete-btnn img,
+.cart-item-row img[src*="delete"] {
+  width: 20px;       
+  height: 20px;      
+  object-fit: contain;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.delete-btnn:hover img,
+.cart-item-row .delete-btnn:hover img {
+  opacity: 1;
+  transform: scale(1.1); 
+}
+
+/* Form input stili */
+input, select, textarea, .search-box {
+  outline: none; 
+  border: 1px solid var(--border-color);
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+input:hover, select:hover, textarea:hover, .search-box:hover {
+  border-color: var(--accent-color); 
+}
+
+input:focus, select:focus, textarea:focus, .search-box:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(140, 109, 88, 0.15); 
+}
+
+.btn-primary.added {
+  background-color: var(--input-bg) !important; 
+  color: var(--accent-color) !important;        
+  border: 1px solid var(--accent-color);       
+  cursor: default;                              
+}
+
+.btn-primary.added:hover {
+  background-color: var(--input-bg) !important;
+  color: var(--accent-color) !important;
+}
+
+#cartItemsContainer, .cart-items-list {
+  max-height: 280px;        
+  overflow-y: auto;      
+  overflow-x: hidden;       
+  padding-right: 8px;      
+}
+
+#cartItemsContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+#cartItemsContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#cartItemsContainer::-webkit-scrollbar-thumb {
+  background-color: var(--accent-color, #8c6d58);
+  border-radius: 10px;
+}

@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nuran Collection</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- PWA: Ilova sifatida o'rnatish (Add to Home Screen) uchun -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#7A258C">
+  <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png">
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Nuran">
+    
+  <!-- Leaflet CSS & JS (Xarita uchun) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+
+  <!-- FIREBASE (Firestore + Authentication) -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCVlZaxGzlc-CX9kK26pstt4f7p9pk0QRE",
+      authDomain: "nuran-collection.firebaseapp.com",
+      projectId: "nuran-collection",
+      storageBucket: "nuran-collection.firebasestorage.app",
+      messagingSenderId: "781457929384",
+      appId: "1:781457929384:web:fa04d6505d94910576fe9d"
+    };
+    firebase.initializeApp(firebaseConfig);
+  </script>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="top-header">
+    <div class="brand">
+      <img src="images/logo.jpg" alt="Nuran Logo" class="brand-logo" onerror="this.src='https://via.placeholder.com/45'">
+      <div>
+        <h1 class="brand-title">Nuran</h1>
+        <span class="brand-subtitle">Collection</span>
+      </div>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Mahsulotlarni qidirish...">
+    </div>
+
+    <div class="header-actions">
+      <!-- Mijoz tugmalari -->
+      <button class="pill-btn customer-only" id="myOrdersBtn">
+        <span class="btn-text">Buyurtmalarim</span>
+      </button>
+      <button class="pill-btn customer-only" id="cartBtn">
+        <span class="btn-text">Savat</span>
+        <span class="badge" id="cartBadge">0</span>
+      </button>
+
+      <!-- Admin tugmalari -->
+      <button class="pill-btn customer-only" id="adminLoginBtn">
+        <span class="btn-text">Admin Kirish</span>
+      </button>
+      <button class="pill-btn admin-only hidden" id="addProductBtn">
+        <span class="btn-text">+ Mahsulot</span>
+      </button>
+      <button class="pill-btn admin-only hidden" id="stockBtn">
+        <span class="btn-text">Ombor</span>
+      </button>
+      <button class="pill-btn admin-only hidden" id="receiptsBtn">
+        <span class="btn-text">Cheklar</span>
+      </button>
+      <button class="pill-btn admin-only hidden" id="exitAdminBtn">
+        <span class="btn-text">Chiqish</span>
+      </button>
+
+      <!-- Mavzu tugmasi -->
+      <button class="pill-btn" id="themeToggleBtn">
+        <span class="btn-text" id="themeText">Dark</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ASOSIY BO'LIM -->
+  <main class="main-container">
+    <section class="categories-section">
+      <div class="categories-list" id="categoriesList">
+        <button class="cat-btn active" data-category="all">Barchasi</button>
+        <button class="cat-btn" data-category="Ro'mollar">Ro'mollar</button>
+        <button class="cat-btn" data-category="Kiyimlar">Kiyimlar</button>
+        <button class="cat-btn" data-category="Aksessuarlar">Aksessuarlar</button>
+      </div>
+    </section>
+
+    <!-- Mahsulotlar Tarmog'i (Dashboard faqat katalog) -->
+    <section class="products-grid" id="productsGrid"></section>
+  </main>
+
+  <!-- OMBOR HOLATI MODALI (Admin) -->
+  <div class="modal-overlay hidden" id="stockModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <div class="stock-info-header">
+        <h2>Ombor Holati</h2>
+        <span class="stock-status-badge">Faol</span>
+      </div>
+      <div class="stock-metrics">
+        <div class="metric-box">
+          <span class="metric-title">Jami Turlar</span>
+          <span class="metric-value" id="totalTypes">0</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-title">Jami Mahsulot Soni</span>
+          <span class="metric-value" id="totalUnits">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KARTA MA'LUMOTLARI MODALI (Admin) -->
+  <div class="modal-overlay hidden" id="cardSettingsModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">To'lov Kartasi Ma'lumotlari</h3>
+      <form id="adminCardForm">
+        <div class="form-group">
+          <label>Karta Raqam</label>
+          <input type="text" id="adminCardNumber" required>
+        </div>
+        <div class="form-group">
+          <label>Karta Egasining Ismi</label>
+          <input type="text" id="adminCardHolder" required>
+        </div>
+        <div class="form-group">
+          <label>Bank Nomi</label>
+          <input type="text" id="adminBankName" required>
+        </div>
+        <button type="submit" class="btn-primary">Kartani Saqlash</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODALLAR -->
+
+  <!-- Admin Avtorizatsiya Modali -->
+  <div class="modal-overlay hidden" id="adminAuthModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Admin Panelga Kirish</h3>
+      <form id="adminAuthForm">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="adminEmail" placeholder="admin@nuran.uz" required>
+        </div>
+        <div class="form-group">
+          <label>Parol</label>
+          <input type="password" id="adminPassword" placeholder="Parolni kiriting..." required>
+        </div>
+        <p id="authError" class="hidden" style="color: red; font-size: 12px; margin-bottom: 10px;">Email yoki parol noto'g'ri!</p>
+        <button type="submit" class="btn-primary">Kirish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Mahsulot Qo'shish Modali -->
+  <div class="modal-overlay hidden" id="addProductModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Yangi Mahsulot Qo'shish</h3>
+      <form id="addProductForm">
+        <div class="form-group">
+          <label>Mahsulot Nomi</label>
+          <input type="text" id="newProdName" required>
+        </div>
+
+        <div class="form-group">
+          <label for="productCategory">Kategoriya</label>
+          <div class="cat-row">
+            <select id="productCategory">
+              <option value="Ro'mollar">Ro'mollar</option>
+              <option value="Kiyimlar">Kiyimlar</option>
+              <option value="Aksessuarlar">Aksessuarlar</option>
+            </select>
+            <button type="button" id="toggleCatInputBtn" class="add-cat-btn">+</button>
+          </div>
+          
+          <div id="newCatInputBox" class="cat-input-box hidden" style="margin-top: 8px;">
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="newCategoryName" placeholder="Yangi kategoriya nomi...">
+              <button type="button" id="saveCategoryBtn" class="btn-primary" style="width: auto; padding: 0 15px;">Saqlash</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Mavjud Ranglar</label>
+          <div id="colorPickerGrid">
+            <label class="color-item"><input type="checkbox" value="Oq"><span>Oq</span></label>
+            <label class="color-item"><input type="checkbox" value="Qora"><span>Qora</span></label>
+            <label class="color-item"><input type="checkbox" value="Och ko'k"><span>Och ko'k</span></label>
+            <label class="color-item"><input type="checkbox" value="To'q ko'k"><span>To'q ko'k</span></label>
+            <label class="color-item"><input type="checkbox" value="Sariq"><span>Sariq</span></label>
+            <label class="color-item"><input type="checkbox" value="Qizil"><span>Qizil</span></label>
+            <label class="color-item"><input type="checkbox" value="Yashil"><span>Yashil</span></label>
+            <label class="color-item"><input type="checkbox" value="Xaki"><span>Xaki</span></label>
+            <label class="color-item"><input type="checkbox" value="Olive"><span>Olive</span></label>
+            <label class="color-item"><input type="checkbox" value="Choco"><span>Choco</span></label>
+            <label class="color-item"><input type="checkbox" value="Bejiviy"><span>Bejiviy</span></label>
+            <label class="color-item"><input type="checkbox" value="Bardoviy"><span>Bardoviy</span></label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Narxi (UZS)</label>
+          <input type="number" id="newProdPrice" required>
+        </div>
+
+        <div class="form-group">
+          <label>Ombordagi Soni</label>
+          <input type="number" id="newProdStock" required>
+        </div>
+
+        <div class="form-group">
+          <label>O'lchamlar (vergul bilan ajratib yozing)</label>
+          <input type="text" id="newProdSizes" placeholder="Masalan: M, L, XL, Standart">
+        </div>
+
+        <div class="form-group">
+          <label>Rasmlar</label>
+          <input type="file" id="newProdImgFile" accept="image/*" multiple>
+        </div>
+
+        <div class="form-group">
+          <label>Tavsif</label>
+          <textarea id="newProdDesc" rows="3"></textarea>
+        </div>
+
+        <button type="submit" class="btn-primary">Qo'shish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT PRODUCT MODAL (Admin) -->
+  <div id="editProductModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h2>Mahsulotni Tahrirlash</h2>
+      
+      <form id="editProductForm">
+        <input type="hidden" id="editProdId">
+
+        <div class="form-group">
+          <label>Mahsulot nomi</label>
+          <input type="text" id="editProdName" required>
+        </div>
+
+        <div class="form-group">
+          <label>Kategoriya</label>
+          <select id="editProdCategory"></select>
+        </div>
+
+        <div class="form-group">
+          <label>Narxi (UZS)</label>
+          <input type="number" id="editProdPrice" required>
+        </div>
+
+        <div class="form-group">
+          <label>Soni (Sklad)</label>
+          <input type="number" id="editProdStock" required>
+        </div>
+
+        <div class="form-group">
+          <label>O'lchamlar (vergul bilan)</label>
+          <input type="text" id="editProdSizes">
+        </div>
+
+        <div class="form-group">
+          <label>Mavjud Ranglar</label>
+          <div id="editColorPickerGrid">
+            <label class="color-item"><input type="checkbox" value="Oq"><span>Oq</span></label>
+            <label class="color-item"><input type="checkbox" value="Qora"><span>Qora</span></label>
+            <label class="color-item"><input type="checkbox" value="Och ko'k"><span>Och ko'k</span></label>
+            <label class="color-item"><input type="checkbox" value="To'q ko'k"><span>To'q ko'k</span></label>
+            <label class="color-item"><input type="checkbox" value="Sariq"><span>Sariq</span></label>
+            <label class="color-item"><input type="checkbox" value="Qizil"><span>Qizil</span></label>
+            <label class="color-item"><input type="checkbox" value="Yashil"><span>Yashil</span></label>
+            <label class="color-item"><input type="checkbox" value="Xaki"><span>Xaki</span></label>
+            <label class="color-item"><input type="checkbox" value="Olive"><span>Olive</span></label>
+            <label class="color-item"><input type="checkbox" value="Choco"><span>Choco</span></label>
+            <label class="color-item"><input type="checkbox" value="Bejiviy"><span>Bejiviy</span></label>
+            <label class="color-item"><input type="checkbox" value="Bardoviy"><span>Bardoviy</span></label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tavsif</label>
+          <textarea id="editProdDesc"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Yangi rasm (agar o'zgartirmoqchi bo'lsangiz):</label>
+          <input type="file" id="editProdImgFile" accept="image/*" multiple>
+        </div>
+
+        <button type="submit" class="btn-primary">Saqlash</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Mahsulot Batafsil Modali -->
+  <div class="modal-overlay hidden" id="productModal">
+    <div class="modal-card modal-card-large">
+      <button class="close-modal">&times;</button>
+      <div class="modal-product-layout">
+        <div class="modal-gallery-container">
+          <img id="modalImg" class="modal-img" src="" alt="Product">
+          <div class="modal-thumbnails" id="modalThumbnails"></div>
+        </div>
+        <div class="modal-body">
+          <span class="modal-cat" id="modalCategory" style="margin: 10px 0;"></span>
+          <h2 class="modal-title" id="modalTitle" style="margin: 10px 0;"></h2>
+          <p class="modal-desc" id="modalDesc" style="margin: 10px 0;"></p>
+
+          <div class="form-group">
+            <label>O'lchamni tanlang:</label>
+            <div id="modalSizes" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
+          </div>
+
+          <div class="form-group">
+            <label>Rangni tanlang:</label>
+            <div id="modalColors" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
+          </div>
+
+          <div class="card-price" id="modalPrice" style="font-size: 20px; margin: 10px 0;"></div>
+          <button class="btn-primary customer-only" id="modalAddToCartBtn">Savatga Qo'shish</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Savat Modali -->
+  <div class="modal-overlay hidden" id="cartModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Savatingiz</h3>
+      <div class="cart-items-list" id="cartItemsList"></div>
+      <div class="cart-footer">
+        <div style="display: flex; justify-content: space-between; font-weight: bold; margin: 10px;">
+          <span>Jami:</span>
+          <span id="cartTotalSum">0 UZS</span>
+        </div>
+        <button class="btn-primary customer-only" id="checkoutBtn">Rasmiylashtirish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buyurtma va To'lov Modali -->
+  <div class="modal-overlay hidden" id="checkoutModal">
+    <div class="modal-card modal-card-large">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">To'lov va Yetkazib Berish</h3>
+
+      <div class="card-pay-info">
+        <p class="pay-instruction">Quyidagi kartaga to'lovni amalga oshiring va chekni yuklang:</p>
+        <div class="card-box">
+          <div class="card-details">
+            <span class="card-bank-tag" id="displayCardBank">KAPITALBANK</span>
+            <h4 id="displayCardNumber">8600 0000 0000 0000</h4>
+            <p id="displayCardHolder">YUSUPOVA MUKHLISA</p>
+          </div>
+          <button class="copy-btn" id="copyCardBtn">Nusxalash</button>
+        </div>
+      </div>
+
+      <p style="margin: 15px 0 5px 0; font-weight: bold;">Jami to'lov: <span id="checkoutTotalSum">0</span> UZS</p>
+
+      <form id="paymentCheckForm">
+        <div class="form-group">
+          <label>Ismingiz</label>
+          <input type="text" id="customerName" required>
+        </div>
+
+        <div class="form-group">
+          <label>Telefon Raqamingiz</label>
+          <input type="tel" id="customerPhone" placeholder="+998" required>
+        </div>
+
+        <!-- MANZIL TANLASH: DROPDOWN VA XARITA -->
+        <div class="form-group">
+          <label>Yetkazib berish punkti (BTS POCHTA)</label>
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <select id="regionSelect" style="flex: 1;" required>
+              <option value="">1. Viloyatni tanlang</option>
+            </select>
+
+            <select id="btsPointSelect" style="flex: 1;" disabled required>
+              <option value="">2. BTS Punktini tanlang</option>
+            </select>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: var(--text-muted);">Yoki xaritadan tanlang:</span>
+            <button type="button" id="toggleMapBtn" class="btn-secondary-small">Xaritada ko'rish 🗺️</button>
+          </div>
+
+          <!-- MAP CONTAINER -->
+          <div id="btsMapContainer" class="hidden" style="margin-top: 10px;">
+            <div id="btsMap" style="height: 280px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color);"></div>
+            <div id="selectedPointCard" class="hidden" style="margin-top: 10px; padding: 10px; background: var(--input-bg); border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong id="selectedPointName"></strong>
+                <p id="selectedPointAddress" style="font-size: 11px; color: var(--text-muted);"></p>
+              </div>
+              <button type="button" id="confirmPointFromMapBtn" class="btn-primary" style="width: auto; padding: 6px 12px; font-size: 12px;">Tasdiqlash</button>
+            </div>
+          </div>
+
+          <!-- YASHIRIN SAKLANADIGAN TANLANGAN MANZIL -->
+          <input type="hidden" id="customerAddress" required>
+          <div id="chosenAddressBadge" class="hidden" style="margin-top: 8px; font-size: 13px; color: var(--accent-color); font-weight: 600;"></div>
+        </div>
+
+        <div class="form-group" style="margin-top: 15px;">
+          <label>To'lov Cheki (Skrinshot rasm)</label>
+          <input type="file" id="checkFile" accept="image/*" required>
+        </div>
+
+        <button type="submit" class="btn-primary">Buyurtmani Yuborish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Muvaffaqiyat Modali -->
+  <div class="modal-overlay hidden" id="successModal">
+    <div class="modal-card" style="text-align: center;">
+      <h3 class="modal-heading" style="color: #22c55e;">Buyurtmangiz Qabul Qilindi!</h3>
+      <p style="margin-bottom: 20px;">Tez orada siz bilan bog'lanamiz. Buyurtmangiz BTS pochta orqali yuboriladi.</p>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn-primary" id="goToOrdersBtn">Buyurtmalarim</button>
+        <button class="btn-primary" id="backToHomeBtn" style="background: var(--text-muted);">Bosh Sahifa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mijoz Buyurtmalari Modali -->
+  <div class="modal-overlay hidden" id="myOrdersModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Buyurtmalarim</h3>
+      <div id="myOrdersList"></div>
+    </div>
+  </div>
+
+  <!-- Admin Cheklar Modali -->
+  <div class="modal-overlay hidden" id="receiptsModal">
+    <div class="modal-card modal-card-large">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Mijozlar Yuborgan Cheklar</h3>
+      <div id="receiptsList"></div>
+    </div>
+  </div>
+
+  <!-- OTZIV QOLDIRISH MODALI -->
+  <div class="modal-overlay hidden" id="reviewModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Otziv Qoldirish</h3>
+      <form id="reviewForm">
+        <input type="hidden" id="reviewOrderId">
+        <div class="form-group">
+          <label>Rasm yuklang (ixtiyoriy)</label>
+          <input type="file" id="reviewImageFile" accept="image/*">
+        </div>
+        <div class="form-group">
+          <label>Izohingiz</label>
+          <textarea id="reviewComment" rows="4" placeholder="Mahsulot va xizmat haqida fikringiz..." required></textarea>
+        </div>
+        <button type="submit" class="btn-primary">Otzivni Yuborish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MIJOZ (CUSTOMER) UCHUN PASTKI NAVIGATSIYA -->
+  <div class="bottom-nav customer-only" id="customerBottomNav">
+    <button type="button" class="bottom-nav-item active" onclick="setActiveNav(this); window.scrollTo({top: 0, behavior: 'smooth'});">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+      <span>Bosh sahifa</span>
+    </button>
+    <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openCartModal();">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+      <span>Savat</span>
+      <span class="badge nav-badge" id="cartBadgeMobile">0</span>
+    </button>
+    <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openMyOrdersModal();">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y1="13"></line><line x1="16" y1="17" x2="8" y1="17"></line></svg>
+      <span>Buyurtmalarim</span>
+    </button>
+    <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openCustomerProfileModal();">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <span>Profil</span>
+    </button>
+  </div>
+
+  <!-- ADMIN UCHUN PASTKI NAVIGATSIYA -->
+  <div class="bottom-nav admin-only hidden" id="adminBottomNav">
+    <button type="button" class="bottom-nav-item active" onclick="setActiveNav(this); window.scrollTo({top: 0, behavior: 'smooth'});">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+      <span>Bosh sahifa</span>
+    </button>
+    <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); showModal(document.getElementById('addProductModal'));">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      <span>Yangi mahsulot</span>
+    </button>
+    <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openStockModal();">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"></path><path d="M3 9h18"></path><path d="M9 21V9"></path></svg>
+      <span>Ombor holati</span>
+    </button>
+    <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openReceiptsModal();">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+      <span>Cheklar</span>
+    </button>
+    <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openAdminProfileModal();">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <span>Profil</span>
+    </button>
+  </div>
+
+  <!-- MIJOZ PROFIL MODALI -->
+  <div class="modal-overlay hidden" id="customerProfileModal">
+    <div class="modal-card" style="text-align:center;">
+      <button class="close-modal">&times;</button>
+
+      <div class="profile-edit-row">
+        <h3 class="modal-heading" style="margin:0;">Profil</h3>
+        <button type="button" id="editProfileBtn" class="icon-edit-btn" title="Tahrirlash">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg>
+        </button>
+      </div>
+
+      <div class="profile-avatar-wrap">
+        <div class="profile-avatar" id="profileAvatarBox">
+          <svg id="profileAvatarIcon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <img id="profileAvatarImg" class="hidden" src="" alt="Profil rasmi">
+        </div>
+        <label class="avatar-add-btn" id="avatarAddLabel" title="Rasm qo'shish">
+          +
+          <input type="file" id="profileAvatarFile" accept="image/*" class="hidden-file-input">
+        </label>
+        <button type="button" id="avatarRemoveBtn" class="avatar-remove-btn hidden" title="Rasmni o'chirish">&times;</button>
+      </div>
+
+      <form id="customerProfileForm">
+        <div class="form-group">
+          <label>Ismi Familiyasi</label>
+          <input type="text" id="profileName" placeholder="Ismingizni kiriting" disabled>
+        </div>
+        <div class="form-group">
+          <label>Telefon raqami</label>
+          <input type="tel" id="profilePhone" placeholder="+998" disabled>
+        </div>
+        <button type="submit" class="btn-primary hidden" id="profileSaveBtn">Saqlash</button>
+      </form>
+
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
+        <button class="pill-btn" onclick="toggleTheme()"><span class="btn-text" id="themeTextProfile">Tungi rejim</span></button>
+        <button class="pill-btn" onclick="hideModal(document.getElementById('customerProfileModal')); showModal(document.getElementById('adminAuthModal'));">Administrator sifatida kirish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN PROFIL MODALI -->
+  <div class="modal-overlay hidden" id="adminProfileModal">
+    <div class="modal-card" style="text-align:center;">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Admin Profili</h3>
+      <p style="margin:10px 0; opacity:0.8; font-size:14px;">Siz Admin sifatida tizimga kirgansiz.</p>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
+        <button class="pill-btn" onclick="hideModal(document.getElementById('adminProfileModal')); openCardSettingsModal();">Karta rekvizitlarini boshqarish</button>
+        <button class="pill-btn" onclick="toggleTheme()">Mavzuni almashtirish</button>
+        <button class="pill-btn" id="profileExitAdminBtn" style="color:#e11d48;">Chiqish</button>
+        <button type="button" class="pill-btn" style="font-size:11px; opacity:0.7;" onclick="migrateOldLocalData()">Eski ma'lumotlarni ko'chirish (1 marta)</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
