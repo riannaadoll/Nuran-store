@@ -2,7 +2,7 @@
 // Bu fayl saytni "ilova" sifatida o'rnatish (Add to Home Screen) imkonini beradi
 // va sahifani biroz tezroq ochilishiga yordam beradi.
 
-const CACHE_NAME = 'nuran-cache-v1';
+const CACHE_NAME = 'nuran-cache-v2';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -22,9 +22,13 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            return caches.delete(cache); // eski kesh o'chiriladi
+          }
+        })
       );
     })
   );
