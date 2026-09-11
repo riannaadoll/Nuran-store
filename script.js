@@ -95,6 +95,17 @@ let cardDetails = {
   holder: "YUSUPOVA MUHLISA",
   bank: "KAPITAL BANK"
 };
+let companyDetails = {
+  foundedYear: '',
+  address: '',
+  phone: '',
+  email: '',
+  license: '',
+  contract: '',
+  shopLat: null,
+  shopLng: null
+};
+let debts = [];
 
 let isAdmin = false;
 let currentCategory = "all";
@@ -106,6 +117,14 @@ let btsMap = null;
 let mapMarkers = [];
 let tempSelectedPoint = null;
 let categoriesSeeded = false;
+
+// OTKAZ (bekor qilish) NATIJASI HAQIDAGI BILDIRISHNOMALAR UCHUN HOLAT:
+// Mijozga "rad etildi" yoki "to'lov qaytarildi" natijasi kelganda, u "OK" bosgunicha
+// bildirishnoma modal ekranda turadi. Bir vaqtning o'zida bir nechta buyurtma bo'yicha
+// natija kelsa, navbat (queue) bilan birma-bir ko'rsatiladi.
+let cancelNotificationQueue = [];
+let isShowingCancelNotification = false;
+let handledCancelNotificationIds = new Set();
 
 // Har bir qurilma/brauzer uchun bir martalik, tasodifiy ID — mijoz faqat
 // O'ZI shu qurilmadan bergan buyurtmalarni ko'rishi uchun ishlatiladi.
@@ -142,10 +161,28 @@ function initFirestoreListeners() {
   firestoreDB.collection('orders').onSnapshot(snap => {
     orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+    updateOrderNotificationBadges();
+
+    // "Buyurtmalarim" modali ochiq bo'lsa, ro'yxatni jonli yangilab boramiz
+    const myOrdersModal = document.getElementById('myOrdersModal');
+    if (myOrdersModal && !myOrdersModal.classList.contains('hidden')) {
+      renderMyOrdersList();
+    }
   }, err => console.error('Orders xatosi:', err));
 
   firestoreDB.collection('reviews').onSnapshot(snap => {
     reviews = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const myOrdersModal = document.getElementById('myOrdersModal');
+    if (myOrdersModal && !myOrdersModal.classList.contains('hidden')) {
+      renderMyOrdersList();
+    }
+
+    const productModal = document.getElementById('productModal');
+    if (productModal && !productModal.classList.contains('hidden') && selectedProductForModal) {
+      renderProductReviews(selectedProductForModal.id);
+    }
   }, err => console.error('Reviews xatosi:', err));
 
   firestoreDB.collection('settings').doc('card').onSnapshot(docSnap => {
@@ -154,6 +191,24 @@ function initFirestoreListeners() {
       loadCardDetails();
     }
   }, err => console.error('Card xatosi:', err));
+
+  firestoreDB.collection('settings').doc('company').onSnapshot(docSnap => {
+    if (docSnap.exists) {
+      companyDetails = { ...companyDetails, ...docSnap.data() };
+    }
+    renderCompanyInfo();
+    loadCompanyDetailsForm();
+  }, err => console.error('Kompaniya ma\'lumotlari xatosi:', err));
+
+  firestoreDB.collection('debts').onSnapshot(snap => {
+    debts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    updateDebtsBadge();
+
+    const debtsModal = document.getElementById('debtsModal');
+    if (debtsModal && !debtsModal.classList.contains('hidden')) {
+      renderDebtsList();
+    }
+  }, err => console.error('Qarzdorlik xatosi:', err));
 }
 
 // ADMIN: brauzerda avval (localStorage'da) qo'shilgan eski ma'lumotlarni
@@ -332,9 +387,30 @@ function setupEventListeners() {
   addEvent('myOrdersBtn', 'click', openMyOrdersModal);
   addEvent('receiptsBtn', 'click', openReceiptsModal);
   addEvent('stockBtn', 'click', openStockModal);
+  addEvent('cancelRequestsBtn', 'click', openCancelRequestsModal);
+  addEvent('debtsBtn', 'click', openDebtsModal);
+  addEvent('showAddDebtFormBtn', 'click', () => {
+    document.getElementById('addDebtForm').classList.toggle('hidden');
+  });
+  addEvent('addDebtForm', 'submit', handleAddDebtSubmit);
+  addEvent('extendDebtForm', 'submit', handleExtendDebtSubmit);
+  addEvent('partialPaymentForm', 'submit', handlePartialPaymentSubmit);
+  addEvent('confirmDebtPaidOkBtn', 'click', confirmDebtPaid);
+  addEvent('confirmDebtPaidCancelBtn', 'click', () => {
+    pendingPaidDebtId = null;
+    hideModal(document.getElementById('confirmDebtPaidModal'));
+  });
 
   addEvent('adminCardForm', 'submit', saveCardDetails);
+  addEvent('companyInfoForm', 'submit', saveCompanyDetails);
   addEvent('addProductForm', 'submit', handleAddProduct);
+
+  addEvent('newProdDiscountEnabled', 'change', (e) => {
+    document.getElementById('newProdDiscountBox').classList.toggle('hidden', !e.target.checked);
+  });
+  addEvent('editProdDiscountEnabled', 'change', (e) => {
+    document.getElementById('editProdDiscountBox').classList.toggle('hidden', !e.target.checked);
+  });
   addEvent('editProductForm', 'submit', handleEditProduct);
   addEvent('checkoutBtn', 'click', openCheckoutModal);
   addEvent('copyCardBtn', 'click', copyCardNumber);
@@ -343,6 +419,18 @@ function setupEventListeners() {
   addEvent('toggleMapBtn', 'click', toggleBTSMap);
   addEvent('confirmPointFromMapBtn', 'click', confirmMapPoint);
   addEvent('reviewForm', 'submit', handleReviewSubmit);
+  addEvent('cancelRequestForm', 'submit', handleCancelRequestSubmit);
+  addEvent('cancelResultOkBtn', 'click', handleCancelResultOk);
+  addEvent('openYandexGoBtn', 'click', openYandexGoDeepLink);
+
+  const starInput = document.getElementById('reviewStarInput');
+  if (starInput) {
+    starInput.addEventListener('click', (e) => {
+      if (e.target.classList.contains('star')) {
+        setReviewRating(parseInt(e.target.dataset.value, 10));
+      }
+    });
+  }
 
   addEvent('editProfileBtn', 'click', toggleProfileEditMode);
   addEvent('customerProfileForm', 'submit', saveCustomerProfile);
@@ -405,6 +493,16 @@ function initBTSAddressSelectors() {
     } else {
       pointSelect.disabled = true;
     }
+
+    // Yandex Go — FAQAT "Toshkent shahri" tanlanganda ko'rinadi.
+    // Boshqa viloyat tanlansa, avtomatik BTS rejimiga qaytariladi.
+    const toggle = document.getElementById('deliveryMethodToggle');
+    if (region === 'Toshkent shahri') {
+      toggle.classList.remove('hidden');
+    } else {
+      toggle.classList.add('hidden');
+      selectDeliveryMethod('bts');
+    }
   });
 
   pointSelect.addEventListener('change', (e) => {
@@ -423,6 +521,76 @@ function setSelectedAddress(fullAddress) {
     badge.textContent = `✓ Tanlandi: ${fullAddress}`;
     badge.classList.remove('hidden');
   }
+}
+
+// ============================================================================
+// YANDEX GO ORQALI YETKAZIB BERISH (faqat Toshkent shahri)
+// Rasmiy Yandex Go deep-link: do'kon manzili "Qayerdan?" ga avtomatik
+// to'ldiriladi, mijoz esa Yandex Go ilovasining o'zida "Qayerga?" ni kiritadi
+// va narxni Yandex o'zi ko'rsatadi — bularga bizning saytimiz aralashmaydi.
+// ============================================================================
+let selectedDeliveryMethod = 'bts';
+
+function selectDeliveryMethod(method) {
+  selectedDeliveryMethod = method;
+
+  const btsBtn = document.getElementById('deliveryMethodBtsBtn');
+  const yandexBtn = document.getElementById('deliveryMethodYandexBtn');
+  const btsBlock = document.getElementById('btsDeliveryBlock');
+  const yandexBlock = document.getElementById('yandexGoBlock');
+  const addrInput = document.getElementById('customerAddress');
+  const badge = document.getElementById('chosenAddressBadge');
+
+  if (method === 'yandex_go') {
+    btsBtn.classList.remove('active');
+    yandexBtn.classList.add('active');
+    btsBlock.classList.add('hidden');
+    yandexBlock.classList.remove('hidden');
+
+    // BTS maydonlari majburiy (required) bo'lgani uchun, Yandex Go tanlanganda
+    // ularni vaqtincha "majburiy emas" qilib qo'yamiz, aks holda forma
+    // yuborilmaydi.
+    document.getElementById('regionSelect').required = false;
+    document.getElementById('btsPointSelect').required = false;
+
+    if (addrInput) {
+      addrInput.value = "Yandex Go orqali yetkaziladi (mijoz o'zi buyurtma qilgan)";
+    }
+    if (badge) {
+      badge.textContent = "✓ Yandex Go orqali yetkaziladi";
+      badge.classList.remove('hidden');
+    }
+  } else {
+    yandexBtn.classList.remove('active');
+    btsBtn.classList.add('active');
+    yandexBlock.classList.add('hidden');
+    btsBlock.classList.remove('hidden');
+
+    document.getElementById('regionSelect').required = true;
+    document.getElementById('btsPointSelect').required = true;
+
+    if (addrInput) addrInput.value = '';
+    if (badge) badge.classList.add('hidden');
+  }
+}
+
+function openYandexGoDeepLink() {
+  if (!companyDetails.shopLat || !companyDetails.shopLng) {
+    alert("Kechirasiz, do'kon joylashuvi hali admin tomonidan xaritada belgilanmagan. Iltimos, admin bilan bog'laning yoki BTS Pochta orqali buyurtma bering.");
+    return;
+  }
+
+  const params = new URLSearchParams({
+    'start-lat': companyDetails.shopLat,
+    'start-lon': companyDetails.shopLng,
+    'tariffClass': 'econom',
+    'ref': 'nurancollection',
+    'appmetrica_tracking_id': '1178268795219780156',
+    'lang': 'uz'
+  });
+
+  const url = `https://3.redirect.appmetrica.yandex.com/route?${params.toString()}`;
+  window.open(url, '_blank');
 }
 
 function toggleBTSMap() {
@@ -521,7 +689,7 @@ function renderCategoriesUI() {
   const catList = document.getElementById('categoriesList');
 
   if (select) select.innerHTML = '';
-  if (catList) catList.innerHTML = '<button class="cat-btn active" data-category="all">Barchasi</button>';
+  if (catList) catList.innerHTML = '<button class="cat-btn cat-btn-discount" data-category="discount">Skidka</button><button class="cat-btn active" data-category="all">Barchasi</button>';
 
   categories.forEach(cat => {
     if (select) {
@@ -610,7 +778,9 @@ function renderProducts(searchQuery = '') {
   const searchVariants = searchQuery ? convertAlphabet(searchQuery) : [];
 
   let filtered = products.filter(p => {
-    const matchesCat = currentCategory === 'all' || p.category === currentCategory;
+    const matchesCat =
+      currentCategory === 'all' ||
+      (currentCategory === 'discount' ? hasActiveDiscount(p) : p.category === currentCategory);
     if (!searchQuery) return matchesCat;
 
     const prodNameVariants = convertAlphabet(p.name);
@@ -647,7 +817,7 @@ function renderProducts(searchQuery = '') {
       <div class="card-content">
         <span style="font-size:12px; opacity:0.7;">${product.category}</span>
         <h3 style="font-size:16px; margin:4px 0;">${product.name}</h3>
-        <div class="card-price">${formatMoney(product.price)} UZS</div>
+        <div class="card-price">${renderPriceHTML(product)}</div>
         <button class="btn-primary customer-only ${isAdmin ? 'hidden' : ''}" onclick="openProductModal('${product.id}')">Batafsil</button>
       </div>
     `;
@@ -668,7 +838,7 @@ function openProductModal(id) {
   document.getElementById('modalTitle').textContent = selectedProductForModal.name;
   document.getElementById('modalCategory').textContent = selectedProductForModal.category;
   document.getElementById('modalDesc').textContent = selectedProductForModal.description || 'Tavsif berilmagan';
-  document.getElementById('modalPrice').textContent = `${formatMoney(selectedProductForModal.price)} UZS`;
+  document.getElementById('modalPrice').innerHTML = renderPriceHTML(selectedProductForModal);
 
   const thumbBox = document.getElementById('modalThumbnails');
   thumbBox.innerHTML = '';
@@ -719,7 +889,64 @@ function openProductModal(id) {
     }, 1200);
   };
 
+  renderProductReviews(selectedProductForModal.id);
+
   showModal(document.getElementById('productModal'));
+}
+
+// Ushbu mahsulot ishtirok etgan buyurtmalar orqali (order.items[].productId)
+// tegishli otzivlarni topib, mahsulot sahifasida ko'rsatadi.
+function renderProductReviews(productId) {
+  const summaryEl = document.getElementById('productReviewsSummary');
+  const listEl = document.getElementById('productReviewsList');
+  if (!summaryEl || !listEl) return;
+
+  const relatedOrderIds = new Set(
+    orders
+      .filter(o => (o.items || []).some(it => it.productId === productId))
+      .map(o => o.id)
+  );
+
+  const productReviews = reviews
+    .filter(r => relatedOrderIds.has(r.orderId))
+    .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+  if (productReviews.length === 0) {
+    summaryEl.innerHTML = '';
+    listEl.innerHTML = '<p style="opacity:0.6; font-size:13px;">Hali otzivlar yo\'q. Birinchi bo\'lib fikr bildiring!</p>';
+    return;
+  }
+
+  const avg = productReviews.reduce((sum, r) => sum + (r.rating || 5), 0) / productReviews.length;
+
+  summaryEl.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+      <span style="font-size:22px; font-weight:700;">${avg.toFixed(1)}</span>
+      <span style="color:#f5a623; font-size:17px;">${renderStarsHTML(Math.round(avg))}</span>
+      <span style="opacity:0.6; font-size:12px;">(${productReviews.length} ta otziv)</span>
+    </div>`;
+
+  listEl.innerHTML = productReviews.map(r => `
+    <div class="product-review-item">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="color:#f5a623; font-size:14px;">${renderStarsHTML(r.rating || 5)}</span>
+        <span style="opacity:0.5; font-size:11px;">${r.date || ''}</span>
+      </div>
+      ${r.comment ? `<p style="margin:6px 0; font-size:13px;">${escapeHTML(r.comment)}</p>` : ''}
+      ${r.image ? `<img src="${r.image}" style="max-width:120px; border-radius:8px; margin-top:6px;">` : ''}
+    </div>
+  `).join('');
+}
+
+function renderStarsHTML(rating) {
+  const full = Math.max(0, Math.min(5, Math.round(rating)));
+  return '★'.repeat(full) + '☆'.repeat(5 - full);
+}
+
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = (str === null || str === undefined) ? '' : String(str);
+  return div.innerHTML;
 }
 
 async function addToCart(e, product, size, color) {
@@ -735,8 +962,9 @@ async function addToCart(e, product, size, color) {
       id: cartItemId,
       productId: product.id,
       name: product.name,
-      price: product.price,
+      price: getEffectivePrice(product),
       image: (product.images && product.images[0]) ? product.images[0] : 'images/logo.jpg',
+      category: product.category || 'Boshqa',
       size: size,
       color: color,
       qty: 1
@@ -854,6 +1082,11 @@ async function openCheckoutModal() {
   const total = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   document.getElementById('checkoutTotalSum').textContent = formatMoney(total);
 
+  // Har safar checkout yangidan ochilganda — toza holatdan boshlaymiz
+  document.getElementById('regionSelect').value = '';
+  document.getElementById('deliveryMethodToggle').classList.add('hidden');
+  selectDeliveryMethod('bts');
+
   showModal(document.getElementById('checkoutModal'));
 }
 
@@ -906,11 +1139,13 @@ async function handlePaymentSubmit(e) {
       customerName: customerName,
       customerPhone: customerPhone,
       customerAddress: customerAddress,
+      deliveryMethod: selectedDeliveryMethod,
       items: cartItems,
       totalSum: cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0),
       receiptImg: receiptBase64,
       receiptType: file.type,
       status: "Kutilmoqda",
+      lastStatusSeenByCustomer: "Kutilmoqda",
       btsCode: "BTS-" + Math.floor(100000 + Math.random() * 900000),
       createdAtMs: Date.now(),
       deviceId: getDeviceId()
@@ -940,6 +1175,20 @@ async function handlePaymentSubmit(e) {
     console.error("Fayl yuklashda xatolik:", err);
     alert("Fayl ishlov berishda xatolik yuz berdi. Iltimos boshqa fayl tanlang.");
   }
+}
+
+function sendTextToTelegramBot(text) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+
+  fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: TELEGRAM_CHAT_ID,
+      text: text,
+      parse_mode: 'HTML'
+    })
+  }).catch(err => console.error("Telegramga yuborishda xatolik:", err));
 }
 
 function sendOrderToTelegramBot(order, file) {
@@ -1006,10 +1255,17 @@ function openReceiptsModal() {
       const item = document.createElement('div');
       item.className = 'stock-card';
 
+      const deleteBtnHTML = (o.status === 'Buyurtma bekor qilindi')
+        ? `<button type="button" class="receipt-delete-btn" title="Chekni o'chirish" onclick="deleteReceiptOrder('${o.id}')">🗑</button>`
+        : '';
+
       item.innerHTML = `
-        <div class="glass-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="glass-card-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span class="customer-name" style="font-weight:bold;">${o.customerName} (${o.customerPhone})</span>
-          <span class="status-badge ${getStatusBadgeClass(o.status)}">${o.status || 'Kutilmoqda'}</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="status-badge ${getStatusBadgeClass(o.status)}">${getStatusDisplayText(o)}</span>
+            ${deleteBtnHTML}
+          </div>
         </div>
         <p class="card-info" style="margin-top:8px;"><strong>Manzil:</strong> ${o.customerAddress}</p>
         <p class="card-info"><strong>BTS Kod:</strong> <span class="bts-code">${o.btsCode}</span></p>
@@ -1019,7 +1275,7 @@ function openReceiptsModal() {
 
         <div class="order-status-actions">
           <button type="button" class="status-btn-compact status-kutilmoqda" onclick="updateOrderStatus('${o.id}', 'Kutilmoqda')">Kutilmoqda</button>
-          <button type="button" class="status-btn-compact status-bts" onclick="updateOrderStatus('${o.id}', 'BTS pochtaga yetkazildi')">BTS pochtaga yetkazildi</button>
+          <button type="button" class="status-btn-compact status-bts" onclick="updateOrderStatus('${o.id}', 'BTS pochtaga yetkazildi')">${o.deliveryMethod === 'yandex_go' ? 'Dostavkadan chiqarildi' : 'BTS pochtaga yetkazildi'}</button>
           <button type="button" class="status-btn-compact status-bekor" onclick="updateOrderStatus('${o.id}', 'Buyurtma bekor qilindi')">Buyurtma bekor qilindi</button>
         </div>
       `;
@@ -1036,12 +1292,60 @@ function getStatusBadgeClass(status) {
   return 'badge-kutilmoqda';
 }
 
+// Buyurtma holati matnini ko'rsatadi — agar Yandex Go orqali yetkazilayotgan
+// bo'lsa, "BTS pochtaga yetkazildi" o'rniga "Dostavkadan chiqarildi" deb
+// ko'rsatadi (ichki saqlanadigan status qiymati esa o'zgarmaydi).
+function getStatusDisplayText(order) {
+  const status = order.status || 'Kutilmoqda';
+  if (status === 'BTS pochtaga yetkazildi' && order.deliveryMethod === 'yandex_go') {
+    return 'Dostavkadan chiqarildi';
+  }
+  return status;
+}
+
+// Admin "Cheklar" bo'limida bekor qilingan buyurtmani (va uning chekini) qo'lda,
+// butunlay o'chirib tashlaydi. Sayt hech qachon buni o'zi avtomatik qilmaydi.
+async function deleteReceiptOrder(orderId) {
+  if (!confirm("Ushbu chekni va unga tegishli buyurtma ma'lumotlarini butunlay o'chirmoqchimisiz? Bu amalni orqaga qaytarib bo'lmaydi.")) {
+    return;
+  }
+  try {
+    await firestoreDB.collection('orders').doc(orderId).delete();
+    showToast("Chek o'chirildi.", 4000);
+    openReceiptsModal();
+  } catch (err) {
+    alert("O'chirishda xatolik: " + err.message);
+  }
+}
+
 function openMyOrdersModal() {
+  renderMyOrdersList();
+  showModal(document.getElementById('myOrdersModal'));
+  queueCancelAcknowledgements();
+  markOrderStatusesAsSeen();
+}
+
+// Mijoz "Buyurtmalarim"ni ochganda, statusi yangilangan (lekin hali ko'rilmagan)
+// buyurtmalarni "ko'rildi" deb belgilaydi — shunda header'dagi qizil son to'g'ri kamayadi.
+function markOrderStatusesAsSeen() {
+  const myDeviceId = getDeviceId();
+
+  orders
+    .filter(o => o.deviceId === myDeviceId)
+    .filter(o => (o.status || 'Kutilmoqda') !== (o.lastStatusSeenByCustomer || 'Kutilmoqda'))
+    .forEach(o => {
+      firestoreDB.collection('orders').doc(o.id).update({
+        lastStatusSeenByCustomer: o.status || 'Kutilmoqda'
+      }).catch(err => console.error('Status ko\'rildi deb belgilashda xatolik:', err));
+    });
+}
+
+function renderMyOrdersList() {
   const container = document.getElementById('myOrdersList');
   if (!container) return;
   container.innerHTML = '';
 
-  const myOrders = orders.filter(o => o.deviceId === getDeviceId());
+  const myOrders = orders.filter(o => o.deviceId === getDeviceId() && !o.customerDismissedCancel);
 
   if (myOrders.length === 0) {
     container.innerHTML = '<p style="text-align:center; padding:20px 0; opacity: 0.7;">Sizda hali buyurtmalar yo\'q.</p>';
@@ -1052,6 +1356,32 @@ function openMyOrdersModal() {
       
       const isDelivered = (o.status === 'BTS pochtaga yetkazildi');
       const hasReview = reviews.some(r => r.orderId === o.id);
+
+      let cancelBlockHTML = '';
+      if (o.cancelRequestStatus === 'pending') {
+        cancelBlockHTML = `
+          <div class="cancel-request-note cancel-pending">
+            ⏳ Bekor qilish so'rovi ko'rib chiqilmoqda
+          </div>`;
+      } else if (o.cancelRequestStatus === 'awaiting_refund') {
+        cancelBlockHTML = `
+          <div class="cancel-request-note cancel-approved">
+            Otkazingiz ko'rib chiqildi va tasdiqlandi, to'lov 48 soat ichida qaytariladi!
+          </div>`;
+      } else if (o.cancelRequestStatus === 'refund_completed') {
+        cancelBlockHTML = `
+          <div class="cancel-request-note cancel-completed">
+            ✓ Otkaz tugallandi, kutganingiz uchun rahmat!
+          </div>`;
+      } else if (o.cancelRequestStatus === 'rejected') {
+        cancelBlockHTML = `
+          <div class="cancel-request-note cancel-rejected">
+            ✕ Bekor qilish so'rovi rad etildi — buyurtma davom etadi
+          </div>`;
+      } else if (!hasReview && o.status === 'Kutilmoqda') {
+        cancelBlockHTML = `
+          <button type="button" class="cancel-order-btn" onclick="handleCancelButtonClick('${o.id}', '${o.status}')">Buyurtmani bekor qilish</button>`;
+      }
 
       const itemsListId = `orderItems_${o.id}`;
       const itemsHTML = (o.items || []).map(it => `
@@ -1067,7 +1397,7 @@ function openMyOrdersModal() {
       card.innerHTML = `
         <div class="glass-card-header" style="display:flex; justify-content:space-between; align-items:center;">
           <span><strong>Buyurtma №:</strong> <span class="bts-code">${o.btsCode}</span></span>
-          <span class="status-badge ${getStatusBadgeClass(o.status)}">${o.status || 'Kutilmoqda'}</span>
+          <span class="status-badge ${getStatusBadgeClass(o.status)}">${getStatusDisplayText(o)}</span>
         </div>
         <p class="card-info" style="margin-top: 6px; font-size: 12px; opacity: 0.6;">Sana: ${o.date}</p>
         <p class="card-info" style="font-size: 14px; margin-top: 4px;"><strong>Manzil:</strong> ${o.customerAddress}</p>
@@ -1075,6 +1405,8 @@ function openMyOrdersModal() {
 
         <button type="button" class="order-items-toggle-btn" onclick="document.getElementById('${itemsListId}').classList.toggle('hidden')">Mahsulotlarni ko'rish</button>
         <div class="order-items-list hidden" id="${itemsListId}">${itemsHTML}</div>
+
+        ${cancelBlockHTML}
 
         ${isDelivered ? `
           <div style="margin-top:10px;">
@@ -1089,13 +1421,721 @@ function openMyOrdersModal() {
       container.appendChild(card);
     });
   }
-
-  showModal(document.getElementById('myOrdersModal'));
 }
 
 function openReviewModal(orderId) {
   document.getElementById('reviewOrderId').value = orderId;
+  setReviewRating(5);
   showModal(document.getElementById('reviewModal'));
+}
+
+function setReviewRating(value) {
+  document.getElementById('reviewRating').value = value;
+  document.querySelectorAll('#reviewStarInput .star').forEach(starEl => {
+    const starValue = parseInt(starEl.dataset.value, 10);
+    starEl.classList.toggle('selected', starValue <= value);
+  });
+}
+
+// ============================================================================
+// TOAST (haqiqiy, o'zi yopiladigan bildirishnoma - alert() emas)
+// ============================================================================
+
+function showToast(message, durationMs = 6000) {
+  let toastContainer = document.getElementById('toastContainer');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toastContainer';
+    document.body.appendChild(toastContainer);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = 'app-toast';
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, durationMs);
+}
+
+function handleCancelButtonClick(orderId, status) {
+  if (status === 'Kutilmoqda') {
+    openCancelRequestModal(orderId);
+  } else {
+    showToast("Xaridingiz tasdiqlangan va yo'lga chiqqan, sotilgan tovar qaytarib olinmaydi!", 20000);
+  }
+}
+
+// ============================================================================
+// BUYURTMANI BEKOR QILISH SO'ROVI (Customer -> Admin tasdiqlaydi)
+// ============================================================================
+
+function openCancelRequestModal(orderId) {
+  document.getElementById('cancelRequestOrderId').value = orderId;
+  document.getElementById('cancelRequestReason').value = '';
+  showModal(document.getElementById('cancelRequestModal'));
+}
+
+async function handleCancelRequestSubmit(e) {
+  e.preventDefault();
+
+  const orderId = document.getElementById('cancelRequestOrderId').value;
+  const reason = document.getElementById('cancelRequestReason').value.trim();
+
+  if (!reason) {
+    alert("Iltimos, bekor qilish sababini yozing!");
+    return;
+  }
+
+  try {
+    await firestoreDB.collection('orders').doc(orderId).update({
+      cancelReason: reason,
+      cancelRequestStatus: 'pending',
+      cancelRequestedAtMs: Date.now()
+    });
+
+    const order = orders.find(o => o.id === orderId);
+    sendTextToTelegramBot(
+      `⚠️ <b>BEKOR QILISH SO'ROVI!</b>\n\n` +
+      `🔖 <b>BTS Kod:</b> <code>${order ? order.btsCode : orderId}</code>\n` +
+      `👤 <b>Mijoz:</b> ${order ? order.customerName : ''}\n` +
+      `📞 <b>Tel:</b> ${order ? order.customerPhone : ''}\n` +
+      `📝 <b>Sabab:</b> ${reason}\n\n` +
+      `Admin panel > Otkazlar bo'limida ko'rib chiqing.`
+    );
+
+    hideModal(document.getElementById('cancelRequestModal'));
+    alert("So'rovingiz yuborildi! Admin ko'rib chiqqach, natija shu yerda ko'rinadi.");
+    openMyOrdersModal();
+  } catch (err) {
+    alert("So'rov yuborishda xatolik: " + err.message);
+  }
+}
+
+function openCancelRequestsModal() {
+  const container = document.getElementById('cancelRequestsList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const activeRequests = orders.filter(o =>
+    o.cancelRequestStatus === 'pending' || o.cancelRequestStatus === 'awaiting_refund'
+  );
+
+  if (activeRequests.length === 0) {
+    container.innerHTML = '<p style="text-align:center; padding:20px 0; opacity: 0.7;">Hozircha bekor qilish so\'rovlari yo\'q.</p>';
+  } else {
+    activeRequests.forEach(o => {
+      const card = document.createElement('div');
+      card.className = 'stock-card';
+
+      const isPending = o.cancelRequestStatus === 'pending';
+
+      card.innerHTML = `
+        <div class="glass-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <span><strong>Buyurtma №:</strong> <span class="bts-code">${o.btsCode}</span></span>
+          <span class="status-badge badge-kutilmoqda">${isPending ? "Ko'rib chiqilmoqda" : "To'lov kutilmoqda"}</span>
+        </div>
+        <p class="card-info" style="margin-top: 6px; font-size: 14px;"><strong>Mijoz:</strong> ${o.customerName} · ${o.customerPhone}</p>
+        <p class="card-info" style="font-size: 14px; margin-top: 4px;"><strong>Summa:</strong> ${formatMoney(o.totalSum)} UZS</p>
+        <p class="card-info" style="font-size: 14px; margin-top: 4px;"><strong>Sabab:</strong> ${o.cancelReason || '-'}</p>
+
+        ${isPending ? `
+          <div class="cancel-admin-actions">
+            <button type="button" class="btn-primary" style="padding:8px 12px; font-size:12px;" onclick="approveCancelRequest('${o.id}')">Tasdiqlash</button>
+            <button type="button" class="cancel-order-btn" style="margin-top:0;" onclick="rejectCancelRequest('${o.id}')">Rad etish</button>
+          </div>
+        ` : `
+          <div class="refund-upload-box">
+            <p class="refund-upload-label">💸 To'lov summasini qaytaring va chekni yuklang</p>
+            <input type="file" id="refundFile_${o.id}" accept="image/*,application/pdf">
+            <button type="button" class="btn-primary" style="padding:8px 12px; font-size:12px; margin-top:8px;" onclick="uploadRefundReceipt('${o.id}')">Chekni yuklab, otkazni yakunlash</button>
+          </div>
+        `}
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  showModal(document.getElementById('cancelRequestsModal'));
+}
+
+// ============================================================================
+// QARZDORLIK TIZIMI (faqat do'konga kelib, qo'lda kiritiladigan mijozlar uchun)
+// ============================================================================
+
+function openDebtsModal() {
+  renderDebtsList();
+  showModal(document.getElementById('debtsModal'));
+}
+
+// Muddatga qarab shoshilinchlik darajasini aniqlaydi: 10/5/0 kun qolganda va
+// 15 kun o'tib ketganda alohida bosqichlar (rang + yorliq) bilan ko'rsatiladi.
+function getDebtUrgency(debt) {
+  if (debt.status === 'paid') {
+    return { className: 'debt-paid', label: "✓ To'landi", daysText: '' };
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const due = new Date(debt.dueDateMs);
+  due.setHours(0, 0, 0, 0);
+  const daysLeft = Math.round((due - now) / 86400000);
+
+  if (daysLeft > 10) {
+    return { className: 'debt-normal', label: 'Muddat bor', daysText: `${daysLeft} kun qoldi` };
+  }
+  if (daysLeft > 5) {
+    return { className: 'debt-soon', label: '10 kunlik ogohlantirish', daysText: `${daysLeft} kun qoldi` };
+  }
+  if (daysLeft > 0) {
+    return { className: 'debt-urgent', label: '5 kunlik ogohlantirish', daysText: `${daysLeft} kun qoldi` };
+  }
+  if (daysLeft === 0) {
+    return { className: 'debt-urgent', label: 'Bugun muddati tugaydi', daysText: 'Bugun' };
+  }
+
+  const daysOverdue = Math.abs(daysLeft);
+  if (daysOverdue >= 15) {
+    return { className: 'debt-critical', label: "⚠ Ma'muriy chora ko'rish", daysText: `${daysOverdue} kun o'tib ketdi` };
+  }
+  return { className: 'debt-overdue', label: 'Muddati o\'tgan', daysText: `${daysOverdue} kun o'tib ketdi` };
+}
+
+function renderDebtsList() {
+  renderTodayDebtsTable();
+
+  const container = document.getElementById('debtsList');
+  if (!container) return;
+
+  if (debts.length === 0) {
+    container.innerHTML = '<p style="text-align:center; padding:20px 0; opacity: 0.7;">Hozircha qarzdorlik yozuvlari yo\'q.</p>';
+    return;
+  }
+
+  const sorted = [...debts].sort((a, b) => {
+    if (a.status === 'paid' && b.status !== 'paid') return 1;
+    if (a.status !== 'paid' && b.status === 'paid') return -1;
+    return (a.dueDateMs || 0) - (b.dueDateMs || 0);
+  });
+
+  container.innerHTML = `
+    <h3 style="margin: 18px 0 10px 0; font-size:15px;">Barcha qarzdorlar</h3>
+    <div style="overflow-x:auto;">
+      <table class="debts-crm-table">
+        <thead>
+          <tr>
+            <th>Ism</th>
+            <th>Telefon</th>
+            <th>Tovarlar</th>
+            <th>Summa</th>
+            <th>Berilgan sana</th>
+            <th>Qaytarish sanasi</th>
+            <th>Holati</th>
+            <th>Amal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map(debt => renderDebtRowHTML(debt)).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// Har bir qarzdor uchun jadval qatori: ism, telefon, tovar, summa, sanalar,
+// holati (rang bilan) va amal (dropdown yoki o'chirish belgisi).
+function renderDebtRowHTML(debt) {
+  const urgency = getDebtUrgency(debt);
+  const givenStr = debt.givenDateMs ? new Date(debt.givenDateMs).toLocaleDateString('uz-UZ') : '-';
+  const dueStr = debt.dueDateMs ? new Date(debt.dueDateMs).toLocaleDateString('uz-UZ') : '-';
+  const isPaid = debt.status === 'paid';
+
+  const actionCell = isPaid
+    ? `<button type="button" class="receipt-delete-btn" title="O'chirish" onclick="deleteDebt('${debt.id}')">🗑</button>`
+    : `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+         ${renderDebtActionSelect(debt)}
+         <button type="button" class="receipt-delete-btn" title="O'chirish" onclick="deleteDebt('${debt.id}')">🗑</button>
+       </div>`;
+
+  const amountCellHTML = formatDebtAmountHTML(debt);
+
+  return `
+    <tr class="${urgency.className}">
+      <td><strong>${escapeHTML(debt.customerName)}</strong></td>
+      <td>${escapeHTML(debt.customerPhone)}</td>
+      <td style="white-space:normal; max-width:180px;">${escapeHTML(debt.itemsDesc || '')}</td>
+      <td>${amountCellHTML}</td>
+      <td>${givenStr}</td>
+      <td>${dueStr}</td>
+      <td><span class="debt-urgency-tag">${urgency.label}${urgency.daysText ? ' · ' + urgency.daysText : ''}</span></td>
+      <td>${actionCell}</td>
+    </tr>
+  `;
+}
+
+// "Bugun qarzini qaytarishi kerak bo'lganlar" — CRM uslubidagi alohida jadval.
+// Bugungi va muddati allaqachon o'tib ketgan (hali "to'landi" bo'lmagan) barcha
+// qarzdorlar shu yerda, birinchi navbatda ko'rinadi.
+// Asl summa kamaytirilgan bo'lsa (qisman to'lov), chizilgan holda ko'rsatadi.
+function formatDebtAmountHTML(debt) {
+  const wasReduced = debt.originalDebtAmount && debt.originalDebtAmount !== debt.debtAmount;
+  if (wasReduced) {
+    return `<span style="text-decoration:line-through; opacity:0.5; margin-right:6px;">${formatMoney(debt.originalDebtAmount)}</span><strong>${formatMoney(debt.debtAmount)}</strong> UZS`;
+  }
+  return `${formatMoney(debt.debtAmount)} UZS`;
+}
+
+function renderTodayDebtsTable() {
+  const wrap = document.getElementById('todayDebtsTableWrap');
+  if (!wrap) return;
+
+  const todayList = debts
+    .filter(d => d.status !== 'paid')
+    .filter(d => {
+      const daysLeft = Math.round((new Date(d.dueDateMs).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+      return daysLeft <= 0;
+    })
+    .sort((a, b) => (a.dueDateMs || 0) - (b.dueDateMs || 0));
+
+  if (todayList.length === 0) {
+    wrap.innerHTML = '';
+    return;
+  }
+
+  wrap.innerHTML = `
+    <h3 style="margin: 4px 0 10px 0; color:#e11d48; font-size:15px;">🔴 Bugun qarzini qaytarishi kerak bo'lganlar</h3>
+    <div style="overflow-x:auto;">
+      <table class="debts-crm-table">
+        <thead>
+          <tr><th>Ism</th><th>Telefon</th><th>Summa</th><th>Amal</th></tr>
+        </thead>
+        <tbody>
+          ${todayList.map(d => `
+            <tr>
+              <td>${escapeHTML(d.customerName)}</td>
+              <td>${escapeHTML(d.customerPhone)}</td>
+              <td>${formatDebtAmountHTML(d)}</td>
+              <td>${renderDebtActionSelect(d)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// Har bir qarzdor uchun "Amal" dropdown'i + oxirgi bajarilgan amal belgisi.
+function renderDebtActionSelect(debt) {
+  let lastActionHTML = '';
+  if (debt.lastAction === 'called') {
+    lastActionHTML = `<div class="debt-last-action">📞 Qo'ng'iroq qilindi</div>`;
+  } else if (debt.lastAction === 'extended') {
+    lastActionHTML = `<div class="debt-last-action">🔄 Yangi muddat berildi</div>`;
+  } else if (debt.lastAction === 'partial') {
+    lastActionHTML = `<div class="debt-last-action">💰 Qisman to'lov qilindi</div>`;
+  }
+
+  return `
+    <div>
+      <select class="debt-action-select" onchange="handleDebtActionSelect(this, '${debt.id}')">
+        <option value="">Amal tanlang...</option>
+        <option value="called">Qo'ng'iroq qildim</option>
+        <option value="partial">Qisman to'ladi</option>
+        <option value="paid">Qarzni to'liq qaytardi</option>
+        <option value="extend">Yana muddat berdim</option>
+      </select>
+      ${lastActionHTML}
+    </div>
+  `;
+}
+
+function handleDebtActionSelect(selectEl, debtId) {
+  const action = selectEl.value;
+  selectEl.value = '';
+
+  if (action === 'called') {
+    markDebtCalled(debtId);
+  } else if (action === 'paid') {
+    markDebtPaid(debtId);
+  } else if (action === 'extend') {
+    openExtendDebtModal(debtId);
+  } else if (action === 'partial') {
+    openPartialPaymentModal(debtId);
+  }
+}
+
+async function markDebtCalled(debtId) {
+  try {
+    await firestoreDB.collection('debts').doc(debtId).update({
+      lastAction: 'called',
+      lastActionAtMs: Date.now()
+    });
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+  }
+}
+
+function openExtendDebtModal(debtId) {
+  document.getElementById('extendDebtId').value = debtId;
+  document.getElementById('extendDebtNewDate').value = '';
+  showModal(document.getElementById('extendDebtModal'));
+}
+
+async function handleExtendDebtSubmit(e) {
+  e.preventDefault();
+  const debtId = document.getElementById('extendDebtId').value;
+  const newDateVal = document.getElementById('extendDebtNewDate').value;
+  if (!debtId || !newDateVal) return;
+
+  try {
+    await firestoreDB.collection('debts').doc(debtId).update({
+      dueDateMs: new Date(newDateVal).getTime(),
+      remindersSent: { d10: false, d5: false, d0: false, overdue15: false },
+      lastAction: 'extended',
+      lastActionAtMs: Date.now()
+    });
+    hideModal(document.getElementById('extendDebtModal'));
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+  }
+}
+
+// Qisman to'lov: mijoz qarzning bir qismini to'laydi, qolgan summa va yangi
+// qaytarish sanasi kiritiladi. Agar to'langan summa qolgan qarzga teng yoki
+// undan katta bo'lsa — qarz to'liq to'landi deb avtomatik yakunlanadi.
+function openPartialPaymentModal(debtId) {
+  const debt = debts.find(d => d.id === debtId);
+  if (!debt) return;
+
+  document.getElementById('partialPaymentDebtId').value = debtId;
+  document.getElementById('partialPaymentAmount').value = '';
+  document.getElementById('partialPaymentAmount').max = debt.debtAmount;
+  document.getElementById('partialPaymentNewDate').value = '';
+  document.getElementById('partialPaymentCurrentDebt').textContent =
+    `Hozirgi qolgan qarz: ${formatMoney(debt.debtAmount)} UZS`;
+
+  showModal(document.getElementById('partialPaymentModal'));
+}
+
+async function handlePartialPaymentSubmit(e) {
+  e.preventDefault();
+  const debtId = document.getElementById('partialPaymentDebtId').value;
+  const paidNow = Number(document.getElementById('partialPaymentAmount').value) || 0;
+  const newDateVal = document.getElementById('partialPaymentNewDate').value;
+  if (!debtId || paidNow <= 0 || !newDateVal) return;
+
+  const debt = debts.find(d => d.id === debtId);
+  if (!debt) return;
+
+  const remaining = (Number(debt.debtAmount) || 0) - paidNow;
+
+  try {
+    if (remaining <= 0) {
+      // To'langan summa qolgan qarzni to'liq yopdi — buyurtma "to'landi" deb yakunlanadi.
+      await firestoreDB.collection('debts').doc(debtId).update({
+        debtAmount: 0,
+        status: 'paid',
+        lastAction: 'partial',
+        lastActionAtMs: Date.now()
+      });
+    } else {
+      await firestoreDB.collection('debts').doc(debtId).update({
+        debtAmount: remaining,
+        dueDateMs: new Date(newDateVal).getTime(),
+        remindersSent: { d10: false, d5: false, d0: false, overdue15: false },
+        lastAction: 'partial',
+        lastActionAtMs: Date.now()
+      });
+    }
+    hideModal(document.getElementById('partialPaymentModal'));
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+  }
+}
+
+async function handleAddDebtSubmit(e) {
+  e.preventDefault();
+
+  const givenDateVal = document.getElementById('debtGivenDate').value;
+  const dueDateVal = document.getElementById('debtDueDate').value;
+
+  const debtAmountVal = Number(document.getElementById('debtAmount').value) || 0;
+
+  const newDebt = {
+    customerName: document.getElementById('debtCustomerName').value.trim(),
+    customerPhone: document.getElementById('debtCustomerPhone').value.trim(),
+    itemsDesc: document.getElementById('debtItemsDesc').value.trim(),
+    debtAmount: debtAmountVal,
+    originalDebtAmount: debtAmountVal,
+    givenDateMs: givenDateVal ? new Date(givenDateVal).getTime() : Date.now(),
+    dueDateMs: dueDateVal ? new Date(dueDateVal).getTime() : Date.now(),
+    status: 'active',
+    remindersSent: { d10: false, d5: false, d0: false, overdue15: false },
+    lastAction: null,
+    lastActionAtMs: null,
+    createdAtMs: Date.now()
+  };
+
+  try {
+    await firestoreDB.collection('debts').add(newDebt);
+    document.getElementById('addDebtForm').reset();
+    document.getElementById('addDebtForm').classList.add('hidden');
+  } catch (err) {
+    alert("Saqlashda xatolik: " + err.message);
+  }
+}
+
+let pendingPaidDebtId = null;
+
+function markDebtPaid(debtId) {
+  pendingPaidDebtId = debtId;
+  showModal(document.getElementById('confirmDebtPaidModal'));
+}
+
+async function confirmDebtPaid() {
+  if (!pendingPaidDebtId) return;
+  const debtId = pendingPaidDebtId;
+  pendingPaidDebtId = null;
+  hideModal(document.getElementById('confirmDebtPaidModal'));
+  try {
+    await firestoreDB.collection('debts').doc(debtId).update({ status: 'paid' });
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+  }
+}
+
+async function deleteDebt(debtId) {
+  if (!confirm("Ushbu qarz yozuvini butunlay o'chirmoqchimisiz?")) return;
+  try {
+    await firestoreDB.collection('debts').doc(debtId).delete();
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+  }
+}
+
+// Header'dagi "Qarzdorlik" tugmasi belgisi: e'tibor talab qiladigan
+// (10 kun ichida yoki muddati o'tgan) faol qarzlar sonini ko'rsatadi.
+function updateDebtsBadge() {
+  const needsAttention = debts.filter(d => {
+    if (d.status === 'paid') return false;
+    const daysLeft = Math.round((new Date(d.dueDateMs).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000);
+    return daysLeft <= 10;
+  }).length;
+  setNotifyBadge(['debtsNotifyBadge', 'debtsNotifyBadgeMobile'], needsAttention);
+}
+
+async function approveCancelRequest(orderId) {
+  if (!confirm("Bekor qilishni tasdiqlaysizmi? Bu bilan buyurtma bekor qilinadi va sizga to'lovni qaytarish so'ralinadi.")) return;
+
+  try {
+    await firestoreDB.collection('orders').doc(orderId).update({
+      cancelRequestStatus: 'awaiting_refund',
+      status: 'Buyurtma bekor qilindi'
+    });
+    openCancelRequestsModal();
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+  }
+}
+
+async function rejectCancelRequest(orderId) {
+  if (!confirm("Bekor qilish so'rovini rad etasizmi? Buyurtma odatdagidek davom etadi.")) return;
+
+  try {
+    await firestoreDB.collection('orders').doc(orderId).update({
+      cancelRequestStatus: 'rejected'
+    });
+    openCancelRequestsModal();
+  } catch (err) {
+    alert("Xatolik: " + err.message);
+  }
+}
+
+async function uploadRefundReceipt(orderId) {
+  const fileInput = document.getElementById(`refundFile_${orderId}`);
+  const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+  if (!file) {
+    alert("Iltimos, avval to'lov chekini tanlang!");
+    return;
+  }
+
+  try {
+    let receiptBase64;
+    if (file.type.startsWith('image/')) {
+      receiptBase64 = await compressAndReadFile(file);
+    } else {
+      receiptBase64 = await readFileAsBase64(file);
+    }
+
+    const sizeCheckBytes = new Blob([JSON.stringify({ refundReceiptImg: receiptBase64 })]).size;
+    if (sizeCheckBytes > 900000) {
+      alert("Chek fayli hajmi juda katta! Iltimos, kichikroq hajmli rasm (screenshot) yuklang, PDF o'rniga rasm tanlang.");
+      return;
+    }
+
+    await firestoreDB.collection('orders').doc(orderId).update({
+      cancelRequestStatus: 'refund_completed',
+      refundReceiptImg: receiptBase64,
+      refundReceiptType: file.type,
+      refundCompletedAtMs: Date.now()
+    });
+
+    showToast("Chek yuklandi, otkaz yakunlandi!", 10000);
+    openCancelRequestsModal();
+  } catch (err) {
+    alert("Chek yuklashda xatolik: " + err.message);
+  }
+}
+
+// ============================================================================
+// MIJOZGA "OK" TUGMALI OTKAZ NATIJASI BILDIRISHNOMASI
+// (refund_completed -> to'lov qaytarildi / rejected -> so'rov rad etildi)
+//
+// Yangi mantiq: hech qanday oyna o'z-o'zidan chiqib qolmaydi. Buning o'rniga
+// "Buyurtmalarim" tugmasining o'ng yuqori burchagida qizil raqamli belgi
+// chiqadi. Mijoz o'sha tugmani bosib ichkariga kirgandan so'ng, "OK" tugmali
+// bildirishnoma(lar) navbat bilan ko'rsatiladi.
+// ============================================================================
+
+// Header tugmalaridagi barcha bildirishnoma belgilarini (mijoz va admin) yangilaydi.
+function updateOrderNotificationBadges() {
+  const myDeviceId = getDeviceId();
+
+  // MIJOZ: "Buyurtmalarim" belgisi — hali "OK" bosmagan otkaz natijalari
+  // VA hali ko'rmagan (status yangilangan) buyurtmalar sonini birgalikda hisoblaydi.
+  const myUnreadOrderIds = new Set();
+  orders.forEach(o => {
+    if (o.deviceId !== myDeviceId) return;
+
+    if (!o.customerDismissedCancel && (o.cancelRequestStatus === 'refund_completed' || o.cancelRequestStatus === 'rejected')) {
+      myUnreadOrderIds.add(o.id);
+    }
+    const seenStatus = o.lastStatusSeenByCustomer || 'Kutilmoqda';
+    if ((o.status || 'Kutilmoqda') !== seenStatus) {
+      myUnreadOrderIds.add(o.id);
+    }
+  });
+  setNotifyBadge(['myOrdersNotifyBadge', 'myOrdersNotifyBadgeMobile'], myUnreadOrderIds.size);
+
+  // ADMIN: "Cheklar" belgisi — hali ko'rib chiqilmagan (Kutilmoqda holatidagi) buyurtmalar soni
+  const newReceipts = orders.filter(o => (o.status || 'Kutilmoqda') === 'Kutilmoqda').length;
+  setNotifyBadge(['receiptsNotifyBadge', 'receiptsNotifyBadgeMobile'], newReceipts);
+
+  // ADMIN: "Otkazlar" belgisi — javob kutayotgan yangi bekor qilish so'rovlari soni
+  const newCancelRequests = orders.filter(o => o.cancelRequestStatus === 'pending').length;
+  setNotifyBadge(['cancelRequestsNotifyBadge', 'cancelRequestsNotifyBadgeMobile'], newCancelRequests);
+}
+
+// elId bitta ID yoki ID'lar massivi bo'lishi mumkin — shu tarzda bitta
+// hisoblangan sonni bir vaqtning o'zida ham desktop headerdagi, ham mobil
+// (pastki navigatsiya / Profil oynasi) belgisiga qo'yamiz.
+function setNotifyBadge(elIds, count) {
+  const ids = Array.isArray(elIds) ? elIds : [elIds];
+  ids.forEach(elId => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (count > 0) {
+      el.textContent = count > 99 ? '99+' : String(count);
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+}
+
+// "Buyurtmalarim" ochilganda chaqiriladi: mijozga tegishli, hali ko'rilmagan
+// otkaz natijalarini navbatga qo'yadi va birinchisini ko'rsatadi.
+function queueCancelAcknowledgements() {
+  const myDeviceId = getDeviceId();
+
+  orders
+    .filter(o => o.deviceId === myDeviceId)
+    .filter(o => !o.customerDismissedCancel)
+    .filter(o => o.cancelRequestStatus === 'refund_completed' || o.cancelRequestStatus === 'rejected')
+    .filter(o => !handledCancelNotificationIds.has(o.id))
+    .forEach(o => {
+      if (!cancelNotificationQueue.some(q => q.id === o.id)) {
+        cancelNotificationQueue.push(o);
+      }
+    });
+
+  if (!isShowingCancelNotification && cancelNotificationQueue.length > 0) {
+    showNextCancelNotification();
+  }
+}
+
+function showNextCancelNotification() {
+  if (cancelNotificationQueue.length === 0) {
+    isShowingCancelNotification = false;
+    return;
+  }
+
+  const order = cancelNotificationQueue.shift();
+  isShowingCancelNotification = true;
+
+  const titleEl = document.getElementById('cancelResultTitle');
+  const msgEl = document.getElementById('cancelResultMessage');
+  const okBtn = document.getElementById('cancelResultOkBtn');
+
+  if (order.cancelRequestStatus === 'refund_completed') {
+    titleEl.textContent = "To'lovingiz qaytarildi";
+    titleEl.style.color = '#22c55e';
+    msgEl.textContent = `Buyurtma №${order.btsCode} bekor qilindi va ${formatMoney(order.totalSum)} UZS summasi sizga qaytarildi. Xaridingiz uchun rahmat!`;
+  } else {
+    titleEl.textContent = "Bekor qilish so'rovi rad etildi";
+    titleEl.style.color = '#e11d48';
+    msgEl.textContent = `Buyurtma №${order.btsCode} bo'yicha bekor qilish so'rovingiz admin tomonidan ko'rib chiqilib, rad etildi. Buyurtmangiz odatdagidek davom etadi.`;
+  }
+
+  okBtn.dataset.orderId = order.id;
+  okBtn.dataset.status = order.cancelRequestStatus;
+
+  showModal(document.getElementById('cancelResultModal'));
+}
+
+// "OK" bosilganda: refund_completed bo'lsa buyurtma mijoz ro'yxatidan (Buyurtmalarim)
+// yashiriladi, LEKIN Firestore hujjati o'chirilmaydi — admin "Cheklar" bo'limida uni
+// ko'rib turadi va xohlasa o'zi qo'lda o'chiradi. rejected bo'lsa otkaz maydonlari
+// tozalanadi va buyurtma oddiy holatda davom etadi.
+async function handleCancelResultOk() {
+  const okBtn = document.getElementById('cancelResultOkBtn');
+  const orderId = okBtn.dataset.orderId;
+  const status = okBtn.dataset.status;
+  if (!orderId) return;
+
+  okBtn.disabled = true;
+
+  try {
+    if (status === 'refund_completed') {
+      await firestoreDB.collection('orders').doc(orderId).update({
+        customerDismissedCancel: true
+      });
+    } else if (status === 'rejected') {
+      await firestoreDB.collection('orders').doc(orderId).update({
+        cancelReason: null,
+        cancelRequestStatus: null,
+        cancelRequestedAtMs: null
+      });
+    }
+    handledCancelNotificationIds.add(orderId);
+  } catch (err) {
+    console.error("Otkaz bildirishnomasini yakunlashda xatolik:", err);
+    showToast("Xatolik yuz berdi, birozdan so'ng qayta urinib ko'ring.", 8000);
+  }
+
+  okBtn.disabled = false;
+  hideModal(document.getElementById('cancelResultModal'));
+
+  renderMyOrdersList();
+  updateOrderNotificationBadges();
+
+  isShowingCancelNotification = false;
+  showNextCancelNotification();
 }
 
 async function handleReviewSubmit(e) {
@@ -1103,6 +2143,7 @@ async function handleReviewSubmit(e) {
 
   const orderId = document.getElementById('reviewOrderId').value;
   const comment = document.getElementById('reviewComment').value.trim();
+  const rating = parseInt(document.getElementById('reviewRating').value, 10) || 5;
   const fileInput = document.getElementById('reviewImageFile');
   let reviewImg = null;
 
@@ -1118,6 +2159,7 @@ async function handleReviewSubmit(e) {
     await firestoreDB.collection('reviews').add({
       orderId: orderId,
       comment: comment,
+      rating: rating,
       image: reviewImg,
       date: new Date().toLocaleDateString('uz-UZ')
     });
@@ -1133,8 +2175,13 @@ async function handleReviewSubmit(e) {
 
 async function updateOrderStatus(orderId, newStatus) {
   try {
+    const order = orders.find(o => o.id === orderId);
     await firestoreDB.collection('orders').doc(orderId).update({ status: newStatus });
-    alert(`Buyurtma statusi "${newStatus}" ga o'zgartirildi!`);
+
+    const displayText = (newStatus === 'BTS pochtaga yetkazildi' && order && order.deliveryMethod === 'yandex_go')
+      ? 'Dostavkadan chiqarildi'
+      : newStatus;
+    alert(`Buyurtma statusi "${displayText}" ga o'zgartirildi!`);
     openReceiptsModal();
   } catch (err) {
     alert("Statusni yangilashda xatolik: " + err.message);
@@ -1163,6 +2210,135 @@ function loadCardDetails() {
   if (num) num.value = cardDetails.number;
   if (holder) holder.value = cardDetails.holder;
   if (bank) bank.value = cardDetails.bank;
+}
+
+// ============================================================================
+// KOMPANIYA (RASMIY) MA'LUMOTLARI — Admin tahrirlaydi, footer va profilda ko'rinadi
+// ============================================================================
+
+function openCompanySettingsModal() {
+  loadCompanyDetailsForm();
+  showModal(document.getElementById('companySettingsModal'));
+  setTimeout(initShopLocationMap, 150);
+}
+
+let shopLocationMap = null;
+let shopLocationMarker = null;
+
+// Admin do'kon joylashuvini xaritada bosib belgilaydi (bir marta sozlanadi).
+// Bu koordinatalar Yandex Go deep-link'ida "Qayerdan?" ni avtomatik to'ldiradi.
+function initShopLocationMap() {
+  const container = document.getElementById('shopLocationMap');
+  if (!container || typeof L === 'undefined') return;
+
+  if (!shopLocationMap) {
+    const startLat = companyDetails.shopLat || 41.2995;
+    const startLng = companyDetails.shopLng || 69.2401;
+
+    shopLocationMap = L.map('shopLocationMap').setView([startLat, startLng], companyDetails.shopLat ? 15 : 11);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(shopLocationMap);
+
+    shopLocationMap.on('click', (e) => {
+      setShopLocation(e.latlng.lat, e.latlng.lng);
+    });
+
+    if (companyDetails.shopLat && companyDetails.shopLng) {
+      setShopLocation(companyDetails.shopLat, companyDetails.shopLng, false);
+    }
+  }
+
+  setTimeout(() => shopLocationMap.invalidateSize(), 100);
+}
+
+function setShopLocation(lat, lng, updateBadge = true) {
+  document.getElementById('companyShopLat').value = lat;
+  document.getElementById('companyShopLng').value = lng;
+
+  if (shopLocationMarker) {
+    shopLocationMap.removeLayer(shopLocationMarker);
+  }
+  shopLocationMarker = L.marker([lat, lng]).addTo(shopLocationMap);
+
+  if (updateBadge) {
+    document.getElementById('shopLocationBadge').textContent = `✓ Belgilandi: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+}
+
+function loadCompanyDetailsForm() {
+  const yearEl = document.getElementById('companyFoundedYear');
+  const addrEl = document.getElementById('companyAddress');
+  const phoneEl = document.getElementById('companyPhone');
+  const emailEl = document.getElementById('companyEmail');
+  const licenseEl = document.getElementById('companyLicense');
+  const contractEl = document.getElementById('companyContract');
+  if (!yearEl) return; // Forma hali DOM'da yo'q bo'lsa (masalan birinchi yuklanishda)
+
+  yearEl.value = companyDetails.foundedYear || '';
+  addrEl.value = companyDetails.address || '';
+  phoneEl.value = companyDetails.phone || '';
+  emailEl.value = companyDetails.email || '';
+  licenseEl.value = companyDetails.license || '';
+  contractEl.value = companyDetails.contract || '';
+
+  document.getElementById('companyShopLat').value = companyDetails.shopLat || '';
+  document.getElementById('companyShopLng').value = companyDetails.shopLng || '';
+  const badge = document.getElementById('shopLocationBadge');
+  if (badge) {
+    badge.textContent = (companyDetails.shopLat && companyDetails.shopLng)
+      ? `✓ Belgilangan: ${Number(companyDetails.shopLat).toFixed(5)}, ${Number(companyDetails.shopLng).toFixed(5)}`
+      : 'Hali belgilanmagan — xaritani bosing';
+  }
+}
+
+async function saveCompanyDetails(e) {
+  e.preventDefault();
+  const latVal = document.getElementById('companyShopLat').value;
+  const lngVal = document.getElementById('companyShopLng').value;
+
+  const newCompanyDetails = {
+    foundedYear: document.getElementById('companyFoundedYear').value.trim(),
+    address: document.getElementById('companyAddress').value.trim(),
+    phone: document.getElementById('companyPhone').value.trim(),
+    email: document.getElementById('companyEmail').value.trim(),
+    license: document.getElementById('companyLicense').value.trim(),
+    contract: document.getElementById('companyContract').value.trim(),
+    shopLat: latVal ? Number(latVal) : null,
+    shopLng: lngVal ? Number(lngVal) : null
+  };
+  try {
+    await firestoreDB.collection('settings').doc('company').set(newCompanyDetails);
+    alert("Kompaniya ma'lumotlari saqlandi!");
+  } catch (err) {
+    alert("Saqlashda xatolik: " + err.message);
+  }
+}
+
+// Footer ("Biz haqimizda") va ikkala profil oynasidagi kompaniya blokini yangilaydi.
+function renderCompanyInfo() {
+  const rows = [];
+  if (companyDetails.foundedYear) rows.push(`<div class="info-row"><strong>Faoliyat yili:</strong> ${escapeHTML(companyDetails.foundedYear)} yildan buyon</div>`);
+  if (companyDetails.address) rows.push(`<div class="info-row"><strong>Manzil:</strong> ${escapeHTML(companyDetails.address)}</div>`);
+  if (companyDetails.phone) rows.push(`<div class="info-row"><strong>Telefon:</strong> ${escapeHTML(companyDetails.phone)}</div>`);
+  if (companyDetails.email) rows.push(`<div class="info-row"><strong>Email:</strong> ${escapeHTML(companyDetails.email)}</div>`);
+  if (companyDetails.license) rows.push(`<div class="info-row"><strong>Litsenziya:</strong> ${escapeHTML(companyDetails.license)}</div>`);
+  if (companyDetails.contract) rows.push(`<div class="info-row"><strong>Shartnoma:</strong> ${escapeHTML(companyDetails.contract)}</div>`);
+
+  const html = rows.join('');
+
+  const footerEl = document.getElementById('footerCompanyInfo');
+  if (footerEl) footerEl.innerHTML = html;
+
+  const profileCustomerEl = document.getElementById('profileCompanyInfoCustomer');
+  if (profileCustomerEl) profileCustomerEl.innerHTML = html;
+
+  const profileAdminEl = document.getElementById('profileCompanyInfoAdmin');
+  if (profileAdminEl) profileAdminEl.innerHTML = html;
+
+  const footerEl2 = document.getElementById('siteFooter');
+  if (footerEl2) footerEl2.classList.toggle('hidden', rows.length === 0);
 }
 
 function compressAndReadFile(file) {
@@ -1243,7 +2419,22 @@ async function handleAddProduct(e) {
     images.push('images/logo.jpg');
   }
 
-  saveNewProduct({ name, category, price, stock, sizes, colors, images, description });
+  const discountEnabled = document.getElementById('newProdDiscountEnabled').checked;
+  const discountPriceRaw = document.getElementById('newProdDiscountPrice').value;
+  let discountPrice = discountEnabled && discountPriceRaw ? Number(discountPriceRaw) : null;
+
+  if (discountEnabled) {
+    if (!discountPriceRaw || discountPrice <= 0) {
+      alert("Skidka narxini kiriting!");
+      return;
+    }
+    if (discountPrice >= price) {
+      alert("Skidka narxi asl narxidan KICHIK bo'lishi kerak!");
+      return;
+    }
+  }
+
+  saveNewProduct({ name, category, price, stock, sizes, colors, images, description, discountPrice });
 }
 
 async function saveNewProduct(data) {
@@ -1254,6 +2445,7 @@ async function saveNewProduct(data) {
     if (modal) modal.classList.add('hidden');
 
     document.getElementById('addProductForm')?.reset();
+    document.getElementById('newProdDiscountBox')?.classList.add('hidden');
     alert("Mahsulot muvaffaqiyatli qo'shildi!");
   } catch (err) {
     alert("Mahsulot qo'shishda xatolik: " + err.message);
@@ -1280,6 +2472,19 @@ function openEditModal(id) {
   document.getElementById('editProdStock').value = product.stock || 0;
   document.getElementById('editProdSizes').value = product.sizes ? product.sizes.join(', ') : '';
   document.getElementById('editProdDesc').value = product.description || '';
+
+  const discountEnabledCb = document.getElementById('editProdDiscountEnabled');
+  const discountBox = document.getElementById('editProdDiscountBox');
+  const discountPriceInput = document.getElementById('editProdDiscountPrice');
+  if (hasActiveDiscount(product)) {
+    discountEnabledCb.checked = true;
+    discountBox.classList.remove('hidden');
+    discountPriceInput.value = product.discountPrice;
+  } else {
+    discountEnabledCb.checked = false;
+    discountBox.classList.add('hidden');
+    discountPriceInput.value = '';
+  }
 
   const existingColors = product.colors || [];
   document.querySelectorAll('#editColorPickerGrid input[type=checkbox]').forEach(cb => {
@@ -1314,6 +2519,21 @@ async function handleEditProduct(e) {
   const checkedColors = Array.from(document.querySelectorAll('#editColorPickerGrid input[type=checkbox]:checked')).map(cb => cb.value);
   const colors = checkedColors.length > 0 ? checkedColors : ['Standart'];
 
+  const discountEnabled = document.getElementById('editProdDiscountEnabled').checked;
+  const discountPriceRaw = document.getElementById('editProdDiscountPrice').value;
+  let discountPrice = discountEnabled && discountPriceRaw ? Number(discountPriceRaw) : null;
+
+  if (discountEnabled) {
+    if (!discountPriceRaw || discountPrice <= 0) {
+      alert("Skidka narxini kiriting!");
+      return;
+    }
+    if (discountPrice >= price) {
+      alert("Skidka narxi asl narxidan KICHIK bo'lishi kerak!");
+      return;
+    }
+  }
+
   const index = products.findIndex(p => p.id === id);
   if (index === -1) return;
 
@@ -1330,7 +2550,7 @@ async function handleEditProduct(e) {
 
   try {
     await firestoreDB.collection('products').doc(id).update({
-      name, category, price, stock, sizes, colors, description, images
+      name, category, price, stock, sizes, colors, description, images, discountPrice
     });
 
     hideModal(document.getElementById('editProductModal'));
@@ -1341,10 +2561,205 @@ async function handleEditProduct(e) {
 }
 
 function updateStockDashboard() {
+  const { totals } = computeInventoryStats();
+
   const typesEl = document.getElementById('totalTypes');
   const unitsEl = document.getElementById('totalUnits');
-  if (typesEl) typesEl.textContent = products.length;
-  if (unitsEl) unitsEl.textContent = products.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
+  const valueEl = document.getElementById('totalStockValue');
+  const revenueEl = document.getElementById('totalRevenueValue');
+
+  if (typesEl) typesEl.textContent = totals.types;
+  if (unitsEl) unitsEl.textContent = totals.remaining;
+  if (valueEl) valueEl.textContent = formatMoney(totals.remainingValue) + ' UZS';
+  if (revenueEl) revenueEl.textContent = formatMoney(totals.soldValue) + ' UZS';
+
+  renderCategoryBreakdown();
+}
+
+// ============================================================================
+// OMBOR STATISTIKASI — avtomatik hisob-kitob
+// "Sotildi" — bekor qilinmagan buyurtmalar (orders.items) orqali hisoblanadi.
+// "Bor edi" (boshlang'ich) — qolgan (product.stock) + sotilgan miqdor.
+// Bu admin hozirgi "qolgan miqdor"ni qanday kiritgan bo'lsa, shunga tayanadi —
+// alohida "boshlang'ich miqdor" maydonini qo'lda kiritish shart emas.
+// ============================================================================
+function computeInventoryStats() {
+  const categoryMap = {};
+
+  function ensureCat(cat) {
+    if (!categoryMap[cat]) {
+      categoryMap[cat] = { types: 0, initial: 0, sold: 0, remaining: 0, initialValue: 0, soldValue: 0, remainingValue: 0 };
+    }
+    return categoryMap[cat];
+  }
+
+  const soldQtyByProduct = {};
+
+  orders.forEach(o => {
+    if (o.status === 'Buyurtma bekor qilindi') return; // bekor qilingan buyurtma sotilgan hisoblanmaydi
+    (o.items || []).forEach(it => {
+      soldQtyByProduct[it.productId] = (soldQtyByProduct[it.productId] || 0) + (Number(it.qty) || 0);
+
+      const cat = it.category || (products.find(p => p.id === it.productId) || {}).category || 'Boshqa';
+      const c = ensureCat(cat);
+      c.soldValue += (Number(it.price) || 0) * (Number(it.qty) || 0);
+    });
+  });
+
+  products.forEach(p => {
+    const cat = p.category || 'Boshqa';
+    const c = ensureCat(cat);
+    const remaining = Number(p.stock) || 0;
+    const soldQty = soldQtyByProduct[p.id] || 0;
+    const initial = remaining + soldQty;
+    const price = getEffectivePrice(p);
+
+    c.types += 1;
+    c.remaining += remaining;
+    c.sold += soldQty;
+    c.initial += initial;
+    c.remainingValue += remaining * price;
+    c.initialValue += initial * price;
+  });
+
+  const totals = Object.values(categoryMap).reduce((acc, c) => {
+    acc.types += c.types;
+    acc.initial += c.initial;
+    acc.sold += c.sold;
+    acc.remaining += c.remaining;
+    acc.initialValue += c.initialValue;
+    acc.soldValue += c.soldValue;
+    acc.remainingValue += c.remainingValue;
+    return acc;
+  }, { types: 0, initial: 0, sold: 0, remaining: 0, initialValue: 0, soldValue: 0, remainingValue: 0 });
+
+  return { categoryMap, totals };
+}
+
+function renderCategoryBreakdown() {
+  const container = document.getElementById('stockCategoryBreakdown');
+  if (!container) return;
+
+  const { categoryMap } = computeInventoryStats();
+  const catNames = Object.keys(categoryMap);
+
+  if (catNames.length === 0) {
+    container.innerHTML = '<p style="opacity:0.6; font-size:13px;">Mahsulotlar mavjud emas.</p>';
+    return;
+  }
+
+  container.innerHTML = catNames.map(cat => {
+    const c = categoryMap[cat];
+    return `
+      <div class="category-stat-card">
+        <div class="cat-stat-title">${escapeHTML(cat)} — ${c.types} tur</div>
+        <div class="cat-stat-row" style="margin-bottom:8px;">
+          <div class="cat-stat-item"><span>Bor edi</span><span>${c.initial} dona</span></div>
+          <div class="cat-stat-item"><span>Sotildi</span><span>${c.sold} dona</span></div>
+          <div class="cat-stat-item"><span>Qoldi</span><span>${c.remaining} dona</span></div>
+        </div>
+        <div class="cat-stat-row">
+          <div class="cat-stat-item"><span>Umumiy qiymati</span><span>${formatMoney(c.initialValue)} UZS</span></div>
+          <div class="cat-stat-item"><span>Daromadi</span><span>${formatMoney(c.soldValue)} UZS</span></div>
+          <div class="cat-stat-item"><span>Qolgan qiymati</span><span>${formatMoney(c.remainingValue)} UZS</span></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================================================
+// SOTUV STATISTIKASI GRAFIGI (Chart.js, Line Graph)
+// Oylik: X — joriy oyning kunlari. Yillik: X — joriy yilning oylari.
+// Har bir kategoriya — alohida chiziq (legend orqali solishtiriladi).
+// ============================================================================
+let stockChartInstance = null;
+let stockChartPeriod = 'monthly';
+
+function setStockPeriod(period) {
+  stockChartPeriod = period;
+  const monthlyBtn = document.getElementById('stockPeriodMonthlyBtn');
+  const yearlyBtn = document.getElementById('stockPeriodYearlyBtn');
+  if (monthlyBtn) monthlyBtn.classList.toggle('active', period === 'monthly');
+  if (yearlyBtn) yearlyBtn.classList.toggle('active', period === 'yearly');
+  renderSalesChart();
+}
+
+function computeSalesTimeSeries(period) {
+  const now = new Date();
+  const catNames = [...new Set(products.map(p => p.category || 'Boshqa'))];
+
+  let labels = [];
+  let bucketCount = 0;
+
+  if (period === 'monthly') {
+    bucketCount = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    labels = Array.from({ length: bucketCount }, (_, i) => String(i + 1));
+  } else {
+    bucketCount = 12;
+    labels = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun', 'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
+  }
+
+  const seriesMap = {};
+  catNames.forEach(cat => { seriesMap[cat] = new Array(bucketCount).fill(0); });
+
+  orders.forEach(o => {
+    if (o.status === 'Buyurtma bekor qilindi') return;
+    if (!o.createdAtMs) return;
+    const d = new Date(o.createdAtMs);
+    if (d.getFullYear() !== now.getFullYear()) return;
+    if (period === 'monthly' && d.getMonth() !== now.getMonth()) return;
+
+    const bucketIndex = period === 'monthly' ? (d.getDate() - 1) : d.getMonth();
+
+    (o.items || []).forEach(it => {
+      const cat = it.category || (products.find(p => p.id === it.productId) || {}).category || 'Boshqa';
+      if (!seriesMap[cat]) seriesMap[cat] = new Array(bucketCount).fill(0);
+      seriesMap[cat][bucketIndex] += (Number(it.qty) || 0);
+    });
+  });
+
+  return { labels, seriesMap };
+}
+
+function renderSalesChart() {
+  const canvas = document.getElementById('stockChartCanvas');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  const { labels, seriesMap } = computeSalesTimeSeries(stockChartPeriod);
+  const palette = ['#8c6d58', '#e11d48', '#22c55e', '#0ea5e9', '#f5a623', '#7A258C', '#64748b', '#a16207'];
+
+  const datasets = Object.keys(seriesMap).map((cat, i) => ({
+    label: cat,
+    data: seriesMap[cat],
+    borderColor: palette[i % palette.length],
+    backgroundColor: palette[i % palette.length],
+    tension: 0.3,
+    fill: false,
+    pointRadius: 2,
+    borderWidth: 2
+  }));
+
+  if (stockChartInstance) {
+    stockChartInstance.destroy();
+  }
+
+  stockChartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
+        x: { ticks: { font: { size: 10 } } }
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
+      }
+    }
+  });
 }
 
 function setActiveNav(btn) {
@@ -1356,6 +2771,7 @@ function setActiveNav(btn) {
 
 function openStockModal() {
   updateStockDashboard();
+  renderSalesChart();
   showModal(document.getElementById('stockModal'));
 }
 
@@ -1450,6 +2866,36 @@ function openAdminProfileModal() {
 function showModal(modal) { if (modal) modal.classList.remove('hidden'); }
 function hideModal(modal) { if (modal) modal.classList.add('hidden'); }
 function formatMoney(amount) { return amount ? amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") : "0"; }
+
+// ============================================================================
+// SKIDKA (chegirma) bilan ishlash uchun yordamchi funksiyalar
+// ============================================================================
+
+function hasActiveDiscount(product) {
+  return !!(
+    product &&
+    product.discountPrice &&
+    product.discountPrice > 0 &&
+    product.discountPrice < product.price
+  );
+}
+
+function getEffectivePrice(product) {
+  return hasActiveDiscount(product) ? product.discountPrice : product.price;
+}
+
+function getDiscountPercent(product) {
+  if (!hasActiveDiscount(product)) return 0;
+  return Math.round((1 - product.discountPrice / product.price) * 100);
+}
+
+function renderPriceHTML(product) {
+  if (hasActiveDiscount(product)) {
+    const percent = getDiscountPercent(product);
+    return `<span class="price-old">${formatMoney(product.price)} UZS</span> <span class="price-new">${formatMoney(product.discountPrice)} UZS</span> <span class="price-discount-badge">-${percent}%</span>`;
+  }
+  return `${formatMoney(product.price)} UZS`;
+}
 
 function toggleTheme() {
   document.body.classList.toggle('dark-theme');

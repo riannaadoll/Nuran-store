@@ -22,6 +22,9 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
 
+  <!-- Chart.js (Ombor statistikasi uchun line grafik) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
   <!-- FIREBASE (Firestore + Authentication) -->
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
@@ -58,6 +61,7 @@
       <!-- Mijoz tugmalari -->
       <button class="pill-btn customer-only" id="myOrdersBtn">
         <span class="btn-text">Buyurtmalarim</span>
+        <span class="badge badge-notify hidden" id="myOrdersNotifyBadge">0</span>
       </button>
       <button class="pill-btn customer-only" id="cartBtn">
         <span class="btn-text">Savat</span>
@@ -76,6 +80,15 @@
       </button>
       <button class="pill-btn admin-only hidden" id="receiptsBtn">
         <span class="btn-text">Cheklar</span>
+        <span class="badge badge-notify hidden" id="receiptsNotifyBadge">0</span>
+      </button>
+      <button class="pill-btn admin-only hidden" id="cancelRequestsBtn">
+        <span class="btn-text">Otkazlar</span>
+        <span class="badge badge-notify hidden" id="cancelRequestsNotifyBadge">0</span>
+      </button>
+      <button class="pill-btn admin-only hidden" id="debtsBtn">
+        <span class="btn-text">Qarzdorlik</span>
+        <span class="badge badge-notify hidden" id="debtsNotifyBadge">0</span>
       </button>
       <button class="pill-btn admin-only hidden" id="exitAdminBtn">
         <span class="btn-text">Chiqish</span>
@@ -92,6 +105,7 @@
   <main class="main-container">
     <section class="categories-section">
       <div class="categories-list" id="categoriesList">
+        <button class="cat-btn cat-btn-discount" data-category="discount">Skidka</button>
         <button class="cat-btn active" data-category="all">Barchasi</button>
         <button class="cat-btn" data-category="Ro'mollar">Ro'mollar</button>
         <button class="cat-btn" data-category="Kiyimlar">Kiyimlar</button>
@@ -103,23 +117,183 @@
     <section class="products-grid" id="productsGrid"></section>
   </main>
 
+  <!-- FOOTER: BIZ HAQIMIZDA (rasmiy ma'lumotlar, faqat Admin tahrirlaydi) -->
+  <footer class="site-footer" id="siteFooter">
+    <h3 class="footer-heading">Biz haqimizda:</h3>
+    <div class="footer-info-grid" id="footerCompanyInfo"></div>
+  </footer>
+
+  <!-- OTKAZ SO'ROVLARI MODALI (Admin) -->
+  <div class="modal-overlay hidden" id="cancelRequestsModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h2>Otkaz So'rovlari</h2>
+      <div id="cancelRequestsList" style="margin-top: 15px;"></div>
+    </div>
+  </div>
+
+  <!-- QARZDORLIK MODALI (Admin, faqat qo'lda kiritiladi) -->
+  <div class="modal-overlay hidden" id="debtsModal">
+    <div class="modal-card modal-card-large">
+      <button class="close-modal">&times;</button>
+      <h2>Qarzdorlik</h2>
+      <p style="font-size:13px; opacity:0.75; margin: 6px 0 16px 0;">
+        Bu bo'lim faqat do'konga bevosita kelib, tovarni qarzga olgan mijozlar uchun. Onlayn buyurtmalar bilan bog'liq emas.
+      </p>
+
+      <button type="button" class="btn-primary" id="showAddDebtFormBtn" style="margin-bottom: 16px;">+ Yangi Qarz Qo'shish</button>
+
+      <form id="addDebtForm" class="hidden" style="margin-bottom: 20px; padding: 15px; border: 1px solid var(--border-color); border-radius: 12px;">
+        <div class="form-group">
+          <label>Mijoz ismi</label>
+          <input type="text" id="debtCustomerName" required>
+        </div>
+        <div class="form-group">
+          <label>Telefon raqami</label>
+          <input type="tel" id="debtCustomerPhone" placeholder="+998 __ ___ __ __" required>
+        </div>
+        <div class="form-group">
+          <label>Olingan tovarlar (tavsif)</label>
+          <textarea id="debtItemsDesc" rows="2" placeholder="Masalan: 2 ta ro'mol, 1 ta ko'ylak" required></textarea>
+        </div>
+        <div class="form-group">
+          <label>Umumiy qarz summasi (UZS)</label>
+          <input type="number" id="debtAmount" min="0" required>
+        </div>
+        <div class="form-group">
+          <label>Qarz berilgan sana</label>
+          <input type="date" id="debtGivenDate" lang="en-GB" required>
+        </div>
+        <div class="form-group">
+          <label>Qaytarilishi kerak bo'lgan sana</label>
+          <input type="date" id="debtDueDate" lang="en-GB" required>
+        </div>
+        <button type="submit" class="btn-primary">Saqlash</button>
+      </form>
+
+      <div id="todayDebtsTableWrap"></div>
+
+      <div id="debtsList"></div>
+    </div>
+  </div>
+
+  <!-- QARZGA YANGI MUDDAT BERISH MODALI (Admin) -->
+  <div class="modal-overlay hidden" id="extendDebtModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Yangi muddat kiriting</h3>
+      <form id="extendDebtForm">
+        <input type="hidden" id="extendDebtId">
+        <div class="form-group">
+          <label>Yangi qaytarish sanasi</label>
+          <input type="date" id="extendDebtNewDate" lang="en-GB" required>
+        </div>
+        <button type="submit" class="btn-primary">Saqlash</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- QISMAN TO'LOV MODALI (Admin) -->
+  <div class="modal-overlay hidden" id="partialPaymentModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Qisman to'lov</h3>
+      <p style="font-size:13px; opacity:0.75; margin-bottom:12px;" id="partialPaymentCurrentDebt"></p>
+      <form id="partialPaymentForm">
+        <input type="hidden" id="partialPaymentDebtId">
+        <div class="form-group">
+          <label>Mijoz qancha to'ladi (UZS)</label>
+          <input type="number" id="partialPaymentAmount" min="1" required>
+        </div>
+        <div class="form-group">
+          <label>Qolgan summa uchun yangi qaytarish sanasi</label>
+          <input type="date" id="partialPaymentNewDate" lang="en-GB" required>
+        </div>
+        <button type="submit" class="btn-primary">Saqlash</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- QARZ TO'LANDI — TASDIQLASH MODALI (Admin) -->
+  <div class="modal-overlay hidden" id="confirmDebtPaidModal">
+    <div class="modal-card" style="text-align: center;">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Tasdiqlash</h3>
+      <p style="margin: 15px 0 22px 0;">Ushbu qarz to'liq to'landi deb belgilanadimi?</p>
+      <div style="display:flex; gap:10px; justify-content:center;">
+        <button type="button" class="pill-btn" id="confirmDebtPaidCancelBtn">Bekor qilish</button>
+        <button type="button" class="btn-primary" id="confirmDebtPaidOkBtn">Ha, to'landi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BUYURTMANI BEKOR QILISH SABABI MODALI (Customer) -->
+  <div class="modal-overlay hidden" id="cancelRequestModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Buyurtmani Bekor Qilish</h3>
+      <p style="font-size:13px; opacity:0.75; margin-bottom:12px;">
+        Iltimos, bekor qilish sababini yozing. So'rovingiz admin tomonidan ko'rib chiqiladi va tasdiqlangach, to'lagan summangiz qaytariladi.
+      </p>
+      <form id="cancelRequestForm">
+        <input type="hidden" id="cancelRequestOrderId">
+        <div class="form-group">
+          <label>Sababi</label>
+          <textarea id="cancelRequestReason" rows="3" placeholder="Masalan: fikrimdan qaytdim, noto'g'ri o'lcham tanladim..." required></textarea>
+        </div>
+        <button type="submit" class="btn-primary">So'rovni yuborish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- OTKAZ NATIJASI HAQIDA BILDIRISHNOMA (Customer, faqat "OK" bilan yopiladi) -->
+  <div class="modal-overlay hidden" id="cancelResultModal">
+    <div class="modal-card" style="text-align: center;">
+      <h3 class="modal-heading" id="cancelResultTitle"></h3>
+      <p style="margin: 15px 0 22px 0;" id="cancelResultMessage"></p>
+      <button type="button" class="btn-primary" id="cancelResultOkBtn">OK</button>
+    </div>
+  </div>
+
   <!-- OMBOR HOLATI MODALI (Admin) -->
   <div class="modal-overlay hidden" id="stockModal">
-    <div class="modal-card">
+    <div class="modal-card modal-card-large">
       <button class="close-modal">&times;</button>
       <div class="stock-info-header">
         <h2>Ombor Holati</h2>
         <span class="stock-status-badge">Faol</span>
       </div>
-      <div class="stock-metrics">
+      <div class="stock-metrics" id="stockMetricsGrid">
         <div class="metric-box">
           <span class="metric-title">Jami Turlar</span>
           <span class="metric-value" id="totalTypes">0</span>
         </div>
         <div class="metric-box">
-          <span class="metric-title">Jami Mahsulot Soni</span>
+          <span class="metric-title">Jami Mahsulot Soni (qolgan)</span>
           <span class="metric-value" id="totalUnits">0</span>
         </div>
+        <div class="metric-box">
+          <span class="metric-title">Ombordagi Umumiy Qiymat</span>
+          <span class="metric-value" id="totalStockValue" style="font-size:18px;">0 UZS</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-title">Jami Daromad (sotilgan)</span>
+          <span class="metric-value" id="totalRevenueValue" style="font-size:18px;">0 UZS</span>
+        </div>
+      </div>
+
+      <h3 style="margin: 20px 0 10px 0; font-size:16px;">Kategoriyalar Bo'yicha</h3>
+      <div id="stockCategoryBreakdown"></div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin: 24px 0 12px 0;">
+        <h3 style="font-size:16px;">Sotuv Statistikasi</h3>
+        <div class="period-toggle-group">
+          <button type="button" class="period-toggle-btn active" id="stockPeriodMonthlyBtn" onclick="setStockPeriod('monthly')">Oylik</button>
+          <button type="button" class="period-toggle-btn" id="stockPeriodYearlyBtn" onclick="setStockPeriod('yearly')">Yillik</button>
+        </div>
+      </div>
+      <div class="stock-chart-container">
+        <canvas id="stockChartCanvas"></canvas>
       </div>
     </div>
   </div>
@@ -143,6 +317,56 @@
           <input type="text" id="adminBankName" required>
         </div>
         <button type="submit" class="btn-primary">Kartani Saqlash</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- KOMPANIYA (RASMIY) MA'LUMOTLARI SOZLAMALARI (Admin) -->
+  <div class="modal-overlay hidden" id="companySettingsModal">
+    <div class="modal-card">
+      <button class="close-modal">&times;</button>
+      <h3 class="modal-heading">Kompaniya Ma'lumotlari</h3>
+      <p style="font-size:13px; opacity:0.75; margin-bottom:12px;">
+        Bu ma'lumotlar saytning "Biz haqimizda" bo'limida va mijozlar profilida ko'rinadi.
+      </p>
+      <form id="companyInfoForm">
+        <div class="form-group">
+          <label>Do'kon ochilgan yili</label>
+          <input type="text" id="companyFoundedYear" placeholder="Masalan: 2019">
+        </div>
+        <div class="form-group">
+          <label>Manzil</label>
+          <input type="text" id="companyAddress" placeholder="Toshkent sh., ...">
+        </div>
+        <div class="form-group">
+          <label>Telefon raqami</label>
+          <input type="tel" id="companyPhone" placeholder="+998 __ ___ __ __">
+        </div>
+        <div class="form-group">
+          <label>Elektron pochta</label>
+          <input type="email" id="companyEmail" placeholder="info@example.com">
+        </div>
+        <div class="form-group">
+          <label>Litsenziya</label>
+          <input type="text" id="companyLicense" placeholder="Litsenziya raqami / matni">
+        </div>
+        <div class="form-group">
+          <label>Shartnoma</label>
+          <textarea id="companyContract" rows="3" placeholder="Ommaviy oferta / shartnoma matni yoki havolasi"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Do'kon joylashuvi (Yandex Go "Qayerdan?" uchun)</label>
+          <p style="font-size:12px; opacity:0.7; margin-bottom:6px;">
+            Xaritada do'koningiz turgan joyni bosing. Bu — Toshkent shahridagi mijozlar Yandex Go orqali buyurtma qilganda, "Qayerdan?" maydoniga avtomatik to'ldiriladigan manzil.
+          </p>
+          <div id="shopLocationMap" style="height: 220px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color);"></div>
+          <div id="shopLocationBadge" style="margin-top: 8px; font-size: 12px; color: var(--accent-color); font-weight: 600;"></div>
+          <input type="hidden" id="companyShopLat">
+          <input type="hidden" id="companyShopLng">
+        </div>
+
+        <button type="submit" class="btn-primary">Saqlash</button>
       </form>
     </div>
   </div>
@@ -222,6 +446,17 @@
           <input type="number" id="newProdPrice" required>
         </div>
 
+        <div class="form-group discount-toggle-group">
+          <label class="discount-checkbox-label">
+            <input type="checkbox" id="newProdDiscountEnabled">
+            <span>Skidkaga qo'yish</span>
+          </label>
+          <div id="newProdDiscountBox" class="discount-price-box hidden">
+            <label>Skidka narxi (UZS)</label>
+            <input type="number" id="newProdDiscountPrice" placeholder="Masalan: 100000">
+          </div>
+        </div>
+
         <div class="form-group">
           <label>Ombordagi Soni</label>
           <input type="number" id="newProdStock" required>
@@ -269,6 +504,17 @@
         <div class="form-group">
           <label>Narxi (UZS)</label>
           <input type="number" id="editProdPrice" required>
+        </div>
+
+        <div class="form-group discount-toggle-group">
+          <label class="discount-checkbox-label">
+            <input type="checkbox" id="editProdDiscountEnabled">
+            <span>Skidkaga qo'yish</span>
+          </label>
+          <div id="editProdDiscountBox" class="discount-price-box hidden">
+            <label>Skidka narxi (UZS)</label>
+            <input type="number" id="editProdDiscountPrice" placeholder="Masalan: 100000">
+          </div>
         </div>
 
         <div class="form-group">
@@ -342,6 +588,13 @@
           <button class="btn-primary customer-only" id="modalAddToCartBtn">Savatga Qo'shish</button>
         </div>
       </div>
+
+      <!-- MIJOZLAR FIKRI (Otzivlar) -->
+      <div class="product-reviews-section">
+        <h3 style="margin: 22px 0 10px 0;">Mijozlar Fikri</h3>
+        <div id="productReviewsSummary"></div>
+        <div id="productReviewsList"></div>
+      </div>
     </div>
   </div>
 
@@ -394,32 +647,51 @@
 
         <!-- MANZIL TANLASH: DROPDOWN VA XARITA -->
         <div class="form-group">
-          <label>Yetkazib berish punkti (BTS POCHTA)</label>
-          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
-            <select id="regionSelect" style="flex: 1;" required>
-              <option value="">1. Viloyatni tanlang</option>
-            </select>
+          <label>Yetkazib berish</label>
 
-            <select id="btsPointSelect" style="flex: 1;" disabled required>
-              <option value="">2. BTS Punktini tanlang</option>
-            </select>
-          </div>
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 12px; color: var(--text-muted);">Yoki xaritadan tanlang:</span>
-            <button type="button" id="toggleMapBtn" class="btn-secondary-small">Xaritada ko'rish 🗺️</button>
-          </div>
-
-          <!-- MAP CONTAINER -->
-          <div id="btsMapContainer" class="hidden" style="margin-top: 10px;">
-            <div id="btsMap" style="height: 280px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color);"></div>
-            <div id="selectedPointCard" class="hidden" style="margin-top: 10px; padding: 10px; background: var(--input-bg); border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <strong id="selectedPointName"></strong>
-                <p id="selectedPointAddress" style="font-size: 11px; color: var(--text-muted);"></p>
-              </div>
-              <button type="button" id="confirmPointFromMapBtn" class="btn-primary" style="width: auto; padding: 6px 12px; font-size: 12px;">Tasdiqlash</button>
+          <!-- FAQAT "Toshkent shahri" tanlanganda ko'rinadi -->
+          <div id="deliveryMethodToggle" class="hidden" style="margin-bottom: 12px;">
+            <div class="period-toggle-group">
+              <button type="button" class="period-toggle-btn active" id="deliveryMethodBtsBtn" onclick="selectDeliveryMethod('bts')">BTS Pochta</button>
+              <button type="button" class="period-toggle-btn" id="deliveryMethodYandexBtn" onclick="selectDeliveryMethod('yandex_go')">Yandex Go</button>
             </div>
+          </div>
+
+          <div id="btsDeliveryBlock">
+            <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+              <select id="regionSelect" style="flex: 1;" required>
+                <option value="">1. Viloyatni tanlang</option>
+              </select>
+
+              <select id="btsPointSelect" style="flex: 1;" disabled required>
+                <option value="">2. BTS Punktini tanlang</option>
+              </select>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 12px; color: var(--text-muted);">Yoki xaritadan tanlang:</span>
+              <button type="button" id="toggleMapBtn" class="btn-secondary-small">Xaritada ko'rish 🗺️</button>
+            </div>
+
+            <!-- MAP CONTAINER -->
+            <div id="btsMapContainer" class="hidden" style="margin-top: 10px;">
+              <div id="btsMap" style="height: 280px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color);"></div>
+              <div id="selectedPointCard" class="hidden" style="margin-top: 10px; padding: 10px; background: var(--input-bg); border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong id="selectedPointName"></strong>
+                  <p id="selectedPointAddress" style="font-size: 11px; color: var(--text-muted);"></p>
+                </div>
+                <button type="button" id="confirmPointFromMapBtn" class="btn-primary" style="width: auto; padding: 6px 12px; font-size: 12px;">Tasdiqlash</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- YANDEX GO BLOKI (faqat Toshkent shahri + Yandex Go tanlanganda) -->
+          <div id="yandexGoBlock" class="hidden" style="margin-top: 10px; padding: 14px; border: 1px solid var(--border-color); border-radius: 12px;">
+            <p style="font-size:13px; margin-bottom:10px; line-height:1.5;">
+              Quyidagi tugmani bosib Yandex Go ilovasiga o'tasiz. <strong>"Qayerdan?"</strong> maydoni do'konimiz manzili bilan avtomatik to'ldirilgan bo'ladi — sizga faqat <strong>"Qayerga?"</strong> ga o'z manzilingizni kiritish qoladi. Yetkazib berish narxini Yandex Go o'zi ko'rsatadi, uni haydovchiga to'g'ridan-to'g'ri to'laysiz (mahsulot narxiga kirmaydi).
+            </p>
+            <button type="button" class="btn-primary" id="openYandexGoBtn">Yandex Go'da ochish 🚕</button>
           </div>
 
           <!-- YASHIRIN SAKLANADIGAN TANLANGAN MANZIL -->
@@ -474,6 +746,17 @@
       <h3 class="modal-heading">Otziv Qoldirish</h3>
       <form id="reviewForm">
         <input type="hidden" id="reviewOrderId">
+        <input type="hidden" id="reviewRating" value="5">
+        <div class="form-group">
+          <label>Bahoingiz</label>
+          <div class="star-rating-input" id="reviewStarInput">
+            <span class="star" data-value="1">★</span>
+            <span class="star" data-value="2">★</span>
+            <span class="star" data-value="3">★</span>
+            <span class="star" data-value="4">★</span>
+            <span class="star" data-value="5">★</span>
+          </div>
+        </div>
         <div class="form-group">
           <label>Rasm yuklang (ixtiyoriy)</label>
           <input type="file" id="reviewImageFile" accept="image/*">
@@ -501,6 +784,7 @@
     <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openMyOrdersModal();">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y1="13"></line><line x1="16" y1="17" x2="8" y1="17"></line></svg>
       <span>Buyurtmalarim</span>
+      <span class="badge nav-badge badge-notify hidden" id="myOrdersNotifyBadgeMobile">0</span>
     </button>
     <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openCustomerProfileModal();">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -525,6 +809,7 @@
     <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openReceiptsModal();">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
       <span>Cheklar</span>
+      <span class="badge nav-badge badge-notify hidden" id="receiptsNotifyBadgeMobile">0</span>
     </button>
     <button type="button" class="bottom-nav-item" onclick="setActiveNav(this); openAdminProfileModal();">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -572,6 +857,8 @@
         <button class="pill-btn" onclick="toggleTheme()"><span class="btn-text" id="themeTextProfile">Tungi rejim</span></button>
         <button class="pill-btn" onclick="hideModal(document.getElementById('customerProfileModal')); showModal(document.getElementById('adminAuthModal'));">Administrator sifatida kirish</button>
       </div>
+
+      <div class="footer-info-grid profile-company-info" id="profileCompanyInfoCustomer"></div>
     </div>
   </div>
 
@@ -583,10 +870,21 @@
       <p style="margin:10px 0; opacity:0.8; font-size:14px;">Siz Admin sifatida tizimga kirgansiz.</p>
       <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
         <button class="pill-btn" onclick="hideModal(document.getElementById('adminProfileModal')); openCardSettingsModal();">Karta rekvizitlarini boshqarish</button>
+        <button class="pill-btn" onclick="hideModal(document.getElementById('adminProfileModal')); openCompanySettingsModal();">Kompaniya ma'lumotlarini boshqarish</button>
+        <button class="pill-btn" onclick="hideModal(document.getElementById('adminProfileModal')); openCancelRequestsModal();">
+          Otkaz so'rovlari
+          <span class="badge badge-notify hidden" id="cancelRequestsNotifyBadgeMobile">0</span>
+        </button>
+        <button class="pill-btn" onclick="hideModal(document.getElementById('adminProfileModal')); openDebtsModal();">
+          Qarzdorlik
+          <span class="badge badge-notify hidden" id="debtsNotifyBadgeMobile">0</span>
+        </button>
         <button class="pill-btn" onclick="toggleTheme()">Mavzuni almashtirish</button>
         <button class="pill-btn" id="profileExitAdminBtn" style="color:#e11d48;">Chiqish</button>
         <button type="button" class="pill-btn" style="font-size:11px; opacity:0.7;" onclick="migrateOldLocalData()">Eski ma'lumotlarni ko'chirish (1 marta)</button>
       </div>
+
+      <div class="footer-info-grid profile-company-info" id="profileCompanyInfoAdmin"></div>
     </div>
   </div>
 
